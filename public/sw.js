@@ -1,4 +1,4 @@
-const CACHE='ministerio-shell-v6';
+const CACHE='ministerio-shell-v7';
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim();})()));
 self.addEventListener('fetch',event=>{const r=event.request,u=new URL(r.url);if(r.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/')||u.pathname.includes('signin')||u.pathname.includes('signout'))return;if(r.mode==='navigate'&&u.pathname==='/'){event.respondWith((async()=>{try{const response=await fetch(r);if(response.ok&&!response.redirected&&response.headers.get('Content-Type')?.includes('text/html'))(await caches.open(CACHE)).put('/',response.clone());return response;}catch{return (await caches.match('/'))||Response.error();}})());}else if(['script','style','font','image'].includes(r.destination)||u.pathname==='/manifest.webmanifest'){event.respondWith((async()=>{const hit=await caches.match(r);if(hit)return hit;const response=await fetch(r);if(response.ok)(await caches.open(CACHE)).put(r,response.clone());return response;})());}});

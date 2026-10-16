@@ -39,3 +39,25 @@ await V.writeDeviceAccess(null);
 assert.equal(await V.readDeviceAccess(),null);
 assert.deepEqual(await V.readCache(),cache);
 console.log('PASS: persisted device key, reopen/decrypt, owner and salt isolation, password-required mode, manual lock and key removal; encrypted records preserved.');
+// First use must work with no network, then reopen entirely from the encrypted cache.
+await V.writeCache(null);
+const originalFetch=globalThis.fetch;
+let requests=0;
+globalThis.fetch=async()=>{requests++;throw Error('offline');};
+const fresh=await V.openWorkspace();
+assert.equal(V.isLocalOwner(fresh.owner),true);
+assert.equal(fresh.cache,null);
+const localCache={...cache,owner:fresh.owner,revision:0,dirty:true};
+await V.writeCache(localCache);
+assert.deepEqual(await V.openWorkspace(),{owner:fresh.owner,cache:localCache});
+assert.equal(requests,1,'reopening a local space must never contact an account service');
+// Existing encrypted data must survive even if the browser account changes.
+await V.writeCache(cache);
+assert.deepEqual(await V.openWorkspace(),{owner:cache.owner,cache});
+assert.equal(requests,1);
+// Recover a previous signed-in user's cloud copy only when there is no local cache.
+await V.writeCache(null);
+globalThis.fetch=async()=>Response.json({owner:cache.owner,revision:3,payload:cache.payload});
+assert.deepEqual((await V.openWorkspace()).cache,{...cache,revision:3});
+globalThis.fetch=originalFetch;
+console.log('PASS: account-free offline creation, local reopening without network, existing encrypted cache preservation, legacy cloud recovery.');

@@ -1,6 +1,6 @@
 {
-  "name": "mi-ministerio-review",
-  "version": "0.3.1-beta",
+  "name": "mi-ministerio",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",

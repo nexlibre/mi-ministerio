@@ -1,4 +1,4 @@
-name: Verificar beta
+name: Verificar Mi Ministerio
 on:
   push:
     branches: [main]
@@ -30,7 +30,7 @@ jobs:
       - name: Guardar compilación para revisión
         uses: actions/upload-artifact@v4
         with:
-          name: mi-ministerio-beta-${{ github.sha }}
+          name: mi-ministerio-${{ github.sha }}
           path: dist/
           retention-days: 14
           if-no-files-found: error
