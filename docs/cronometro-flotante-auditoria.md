@@ -32,6 +32,9 @@ no está conectada ni accesible desde la aplicación.
   esas transiciones. El historial queda dentro del estado cifrado y está limitado
   a 128 comandos: un reintento más antiguo se trata como conflicto, no se aplica.
   El resultado de la función no es una confirmación de persistencia.
+  `change()` ahora devuelve si la escritura cifrada local se completó; ese
+  resultado aún no se usa para confirmar mensajes nativos ni soluciona por sí
+  solo los conflictos entre procesos.
 - `floating-bridge.ts` es un transporte web aislado y probado con puertos
   simulados, pero no se instancia en la aplicación ni existe todavía el extremo
   Android. La prueba simulada no demuestra una conexión real con Chrome.
