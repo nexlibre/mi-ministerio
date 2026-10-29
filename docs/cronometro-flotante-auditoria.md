@@ -87,6 +87,25 @@ ni un flujo completo de activación y finalización.
    ajustes; probar Cristal, Oscuro, Claro y Minimalista, opacidad y colores de
    ambos estados, y tamaño mínimo con zonas táctiles utilizables.
 
+## Avances aislados y bloqueos de integración
+
+Existe un prototipo de ajustes en `components/ministerio/floating-settings.tsx`,
+**no conectado a la interfaz**, y el servicio puede recibir preferencias visuales
+por el puente. Las pruebas de renderizado comprueban que el enlace de activación
+solo aparece con paquete y token válidos y conexión preparada; no comprueban que
+Android lo abra ni que los controles sean usables en pantalla. El recibo de una
+finalización pendiente se conserva junto al registro cifrado y no puede ser
+reemplazado por otro; falta conectarlo con un protocolo completo de reintento.
+
+No activar el prototipo hasta resolver y probar la serialización de cambios de
+la bóveda con los comandos del puente, recuperación después de perder un ACK,
+y el orden durable de cancelación y desactivación. En particular, el permiso
+puede ocultar y bloquear la página antes de que llegue el resultado de activación;
+ese resultado no debe perderse ni permitir controles locales simultáneos. La
+reconexión y restauración requieren una fuente de verdad y resolución explícita
+de conflictos, también si falla la escritura cifrada. El servicio y la UI no
+se consideran integrados solo porque sus componentes compilen.
+
 ## Despliegue, firma y validación
 
 El código web tendría que publicarse en el origen exacto de la TWA y la APK
@@ -99,8 +118,11 @@ verificar realmente el certificado de la APK y el archivo servido. El archivo
 La firma original no está disponible. Una clave diferente no actualiza la app
 original del mismo paquete. Se creó una clave local nueva para el paquete
 `.testing` y se verificó la firma de una APK de prueba sin la función completa.
-No presupone acceso a los datos del navegador original, no es una entrega final
-y no debe presentarse como actualización. No desinstalar la aplicación original.
+Tras reconstruirse el entorno, el almacén de claves, su contraseña y esa APK ya
+no están disponibles aquí; no debe asumirse que una clave nueva tendría la misma
+huella ni podría actualizar aquella APK de prueba. No se ha comprobado que exista
+una copia guardada fuera del entorno. Ninguna de las variantes presupone acceso a
+los datos del navegador original. No desinstalar la aplicación original.
 
 Pendiente en teléfono físico: activar y denegar/conceder el permiso; salir a otra
 app; arrastrar a bordes, rotar y recuperar posición; pausar/reanudar en ambas

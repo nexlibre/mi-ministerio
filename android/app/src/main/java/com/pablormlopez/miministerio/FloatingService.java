@@ -51,7 +51,10 @@ public final class FloatingService extends Service {
     private boolean running;
     private boolean connected;
     private FloatingCoordinator coordinator;
-    private final FloatingCoordinator.Observer observer = this::refreshTimer;
+    private final FloatingCoordinator.Observer observer = new FloatingCoordinator.Observer() {
+        @Override public void onTimerChanged() { refreshTimer(); }
+        @Override public void onAppearanceChanged() { rebuildWindow(); }
+    };
     private final Runnable repaint = new Runnable() {
         @Override public void run() {
             renderTime();
@@ -80,6 +83,15 @@ public final class FloatingService extends Service {
         }
         if (root == null) showWindow();
         return START_NOT_STICKY;
+    }
+
+    private void rebuildWindow() {
+        if(root==null)return;
+        rememberPosition();
+        handler.removeCallbacks(repaint);
+        try { windows.removeView(root); } catch(IllegalArgumentException ignored) { }
+        root=null;time=null;toggle=null;close=null;
+        if(Settings.canDrawOverlays(this))showWindow();else stopSelf();
     }
 
     private void showWindow() {
@@ -274,7 +286,7 @@ public final class FloatingService extends Service {
     }
     @Override public void onDestroy() {
         handler.removeCallbacksAndMessages(null);
-        if (coordinator != null) coordinator.removeObserver(observer);
+        if (coordinator != null) { coordinator.removeObserver(observer); coordinator.overlayHidden(); }
         if (root != null) { try { windows.removeView(root); } catch (IllegalArgumentException ignored) { } root=null; }
         super.onDestroy();
     }

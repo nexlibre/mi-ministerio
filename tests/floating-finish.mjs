@@ -8,13 +8,15 @@ const persist=async next=>{state=next;if(fail)return false;saved=structuredClone
 const run=(overrides={})=>F.commitFloatingFinish({workspace:'w',timerId:'timer',revision:2,activity:item,current:()=>state,persist,...overrides});
 assert.equal((await run({revision:1})).status,'conflict');assert.equal(state,initial);
 assert.equal((await run()).status,'storage-error');assert.equal(state.timer,null);assert.equal(state.activities.length,1);
-fail=false;assert.deepEqual(await run(),{status:'committed',activityId:item.id});assert.equal(saved.activities.length,1);
+fail=false;assert.deepEqual(await run(),{status:'committed',activityId:item.id});assert.equal(saved.activities.length,1);assert.deepEqual(saved.profile.floatingPendingFinish,{workspace:'w',timerId:'timer',revision:2});
 assert.deepEqual(await run({activity:M.record({minutes:20})}),{status:'committed',activityId:item.id});assert.equal(state.activities.length,1);
+state={...initial,profile:{...initial.profile,floatingPendingFinish:{workspace:'w',timerId:'previous',revision:1}}};assert.equal((await run()).status,'conflict');assert.equal(state.timer.id,'timer');
 state=initial;assert.equal((await run({workspace:'other'})).status,'conflict');
 state=initial;assert.equal((await run({persist:async next=>{state={...next,profile:{...next.profile,name:'other edit'}};return true;}})).status,'conflict');
 state=initial;assert.equal((await run({persist:async next=>{state=null;return true;}})).status,'locked');
 const fake=await import('fake-indexeddb');globalThis.indexedDB=new fake.IDBFactory();const V=await import(await load('lib/ministerio/vault.ts',[["'./model'",JSON.stringify(model)]]));
 const salt=V.salt(),key=await V.derive('test-only-password',salt);state=initial;
 const result=await run({persist:async next=>{state=next;await V.writeCache({owner:'local:test',revision:0,dirty:true,payload:await V.seal(next,key,salt)});return true;}});
-assert.equal(result.status,'committed');const recovered=await V.unseal((await V.readCache()).payload,key);assert.equal(recovered.timer,null);assert.equal(recovered.activities.length,1);assert.equal(recovered.activities[0].timerId,'timer');
+assert.equal(result.status,'committed');const recovered=await V.unseal((await V.readCache()).payload,key);assert.equal(recovered.timer,null);assert.equal(recovered.activities.length,1);assert.equal(recovered.activities[0].timerId,'timer');assert.deepEqual(recovered.profile.floatingPendingFinish,{workspace:'w',timerId:'timer',revision:2});
+state=recovered;assert.equal((await run()).status,'committed');assert.equal(state.activities.length,1);
 console.log('PASS: floating finish is saved once, retried safely, and committed in encrypted IndexedDB before acknowledgement.');

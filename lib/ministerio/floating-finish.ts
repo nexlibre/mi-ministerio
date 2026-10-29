@@ -21,6 +21,10 @@ export async function commitFloatingFinish({workspace,timerId,revision,activity,
  if(!state)return {status:'locked'};
  if(!workspace||workspace.length>128||state.profile.floatingWorkspaceId!==workspace||!timerId||timerId.length>128||
     !Number.isSafeInteger(revision)||revision<0||!activity||typeof activity.id!=='string'||!activity.id)return {status:'conflict'};
+ // A second finalization must not overwrite a receipt whose native ACK may
+ // have been lost. It has to be reconciled before another timer can finish.
+ const pending=state.profile.floatingPendingFinish;
+ if(pending&&(pending.workspace!==workspace||pending.timerId!==timerId||pending.revision!==revision))return {status:'conflict'};
  let next:State,activityId:string;
  const existing=state.activities.filter(item=>item.timerId===timerId);
  if(existing.length>1)return {status:'conflict'};
@@ -31,6 +35,9 @@ export async function commitFloatingFinish({workspace,timerId,revision,activity,
   try {next=finishTimedActivity(state,timerId,activity,revision);} catch {return {status:'conflict'};}
   activityId=activity.id;
  }
+ // Persist the native finish receipt in the same encrypted transaction as the
+ // activity, so a lost channel/process can safely resend end-finish on unlock.
+ next={...next,profile:{...next.profile,floatingPendingFinish:{workspace,timerId,revision}}};
  try {if(!await persist(next))return {status:'storage-error'};} catch {return {status:'storage-error'};}
  const after=current();
  if(!after)return {status:'locked'};

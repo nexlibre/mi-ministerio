@@ -14,7 +14,7 @@ import java.util.UUID;
  * the feature is enabled. No profile, notes or vault keys are stored here. */
 final class FloatingCoordinator {
     interface Sender { boolean send(String message); }
-    interface Observer { void onTimerChanged(); }
+    interface Observer { void onTimerChanged(); void onAppearanceChanged(); }
     private static FloatingCoordinator instance;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final TimerJournal journal;
@@ -48,6 +48,10 @@ final class FloatingCoordinator {
     boolean consumeActivation(String token) {
         boolean valid=token!=null && token.equals(activationToken) && android.os.SystemClock.elapsedRealtime()<activationExpires;
         activationToken=null;return valid;
+    }
+    void overlayHidden() {
+        if(sender==null)return;
+        try {sender.send(new JSONObject().put("type","overlay-hidden").toString());} catch(JSONException ignored) { }
     }
     void activationResult(boolean enabled) {
         if(sender==null)return;
@@ -112,6 +116,15 @@ final class FloatingCoordinator {
                 if(result==TimerJournal.Result.APPLIED || result==TimerJournal.Result.DUPLICATE) {
                     notifyObserver();sendPending();sendStatus("sync-ready");
                 } else sendStatus("sync-conflict");
+            } else if("configure-floating".equals(type)) {
+                if(!java.util.Objects.equals(journal.snapshot().workspace,input.optString("workspace")))return;
+                int style=Math.max(0,Math.min(3,input.optInt("style",0)));
+                int alpha=Math.max(80,Math.min(255,input.optInt("alpha",230)));
+                float scale=(float)Math.max(.75,Math.min(1.35,input.optDouble("scale",1)));
+                int active=input.optInt("activeColor",0xffe8c56a),paused=input.optInt("pausedColor",0xffc6d3d8);
+                context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).edit().putInt("style",style).putInt("alpha",alpha)
+                        .putFloat("scale",scale).putInt("activeColor",active).putInt("pausedColor",paused).apply();
+                if(observer!=null)main.post(observer::onAppearanceChanged);
             } else if("timer-clear".equals(type)) {
                 TimerJournal.Result result=journal.clear(input.optString("workspace",""),input.optString("timerId",""),input.getLong("revision"));
                 if(result==TimerJournal.Result.APPLIED){notifyObserver();sendStatus("sync-ready");}
