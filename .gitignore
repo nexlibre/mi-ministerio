@@ -9,3 +9,6 @@ dist/
 
 # Local tool downloads
 /.cache/
+
+# Local signed test artifacts (never commit binaries)
+/artifacts/
