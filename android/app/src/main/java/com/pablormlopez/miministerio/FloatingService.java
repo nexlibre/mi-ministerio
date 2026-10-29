@@ -50,6 +50,8 @@ public final class FloatingService extends Service {
     private long observedAt;
     private boolean running;
     private boolean connected;
+    private FloatingCoordinator coordinator;
+    private final FloatingCoordinator.Observer observer = this::refreshTimer;
     private final Runnable repaint = new Runnable() {
         @Override public void run() {
             renderTime();
@@ -60,6 +62,8 @@ public final class FloatingService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         preferences = getSharedPreferences("floating-display", MODE_PRIVATE);
+        coordinator = FloatingCoordinator.get(this);
+        coordinator.setObserver(observer);
         windows = (WindowManager) getSystemService(WINDOW_SERVICE);
         createNotificationChannel();
         startForeground(NOTIFICATION, notification());
@@ -106,9 +110,11 @@ public final class FloatingService extends Service {
         time.setContentDescription("Tiempo del cronómetro");
         row.addView(time, new LinearLayout.LayoutParams(dp(70 * scale), dp(40 * scale)));
         toggle = control("▶", "Iniciar o pausar el cronómetro", foreground, scale);
-        // Not connected to a timer authority yet: never present a fake working control.
-        toggle.setEnabled(false);
-        toggle.setAlpha(.45f);
+        toggle.setOnClickListener(v -> {
+            TimerJournal.Result result=coordinator.toggle();
+            if(result!=TimerJournal.Result.APPLIED && result!=TimerJournal.Result.DUPLICATE)
+                android.widget.Toast.makeText(this,"No se pudo cambiar el cronómetro. Abre Mi Ministerio para sincronizar.",android.widget.Toast.LENGTH_SHORT).show();
+        });
         row.addView(toggle, new LinearLayout.LayoutParams(dp(40 * scale), dp(40 * scale)));
         close = control("×", "Ocultar cronómetro flotante", foreground, scale);
         close.setOnClickListener(v -> stopSelf());
@@ -124,6 +130,7 @@ public final class FloatingService extends Service {
         try {
             windows.addView(root, params);
             root.post(this::restorePosition);
+            refreshTimer();
             handler.post(repaint);
         } catch (RuntimeException e) {
             root = null;
@@ -140,6 +147,24 @@ public final class FloatingService extends Service {
         result.setContentDescription(description);
         result.setClickable(true);
         return result;
+    }
+
+    private void refreshTimer() {
+        if (time == null || coordinator == null) return;
+        TimerJournal.State state=coordinator.snapshot();
+        connected=coordinator.available();
+        TimerJournal.Timer timer=state.timer;
+        running=timer!=null && timer.running;
+        long now=System.currentTimeMillis();
+        elapsedMs=timer==null?0:timer.elapsed+(timer.running?Math.max(0,now-timer.start):0);
+        observedAt=android.os.SystemClock.elapsedRealtime();
+        toggle.setEnabled(connected);
+        toggle.setAlpha(connected?1f:.45f);
+        toggle.setText(running?"Ⅱ":"▶");
+        toggle.setContentDescription(running?"Pausar cronómetro":"Iniciar o reanudar cronómetro");
+        int color=preferences.getInt(running?"activeColor":"pausedColor",running?0xffe8c56a:0xffc6d3d8);
+        time.setTextColor(color);
+        renderTime();
     }
 
     private void renderTime() {
@@ -249,6 +274,7 @@ public final class FloatingService extends Service {
     }
     @Override public void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        if (coordinator != null) coordinator.removeObserver(observer);
         if (root != null) { try { windows.removeView(root); } catch (IllegalArgumentException ignored) { } root=null; }
         super.onDestroy();
     }
