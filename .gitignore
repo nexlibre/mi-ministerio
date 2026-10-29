@@ -6,3 +6,6 @@ dist/
 
 # Local signing material: never commit
 /private-signing/
+
+# Local tool downloads
+/.cache/
