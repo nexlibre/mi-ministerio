@@ -45,6 +45,12 @@ no está conectada ni accesible desde la aplicación.
   No se solicita ningún permiso ni se arranca el servicio desde la interfaz.
   `OverlayPositionTest` comprueba límites y coordenadas relativas, no los
   gestos reales ni los insets de dispositivos Android.
+  El diario nativo `TimerJournal` y su almacén atómico en el directorio sin
+  copias de seguridad se desarrollan por separado y todavía no están
+  conectados al servicio ni a la web. Contienen identificadores opacos,
+  marcas temporales y estado del cronómetro sin cifrar, no datos del perfil
+  ni la clave. Falta establecer la identidad del espacio y el protocolo de
+  confirmación durable con el almacén cifrado, incluso tras restauración.
 
 ## Diseño pendiente antes de implementar
 
