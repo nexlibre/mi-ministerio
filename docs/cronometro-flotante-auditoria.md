@@ -132,6 +132,15 @@ La consulta al archivo servido el 29 de octubre de 2026 encontró únicamente
 `common.handle_all_urls` para el paquete original: no incluye `common.use_as_origin`
 ni la variante `.testing`, por lo que no se puede dar por validado el puente.
 
+El usuario autorizó la publicación; sigue faltando acceso al servicio que aloja
+el origen y una forma de desplegar sin reemplazar el backend Vinext existente.
+`public/.well-known/assetlinks.json` prepara la relación del certificado original
+para futuros despliegues, pero no es prueba de que esté publicada y no contiene
+la huella de una nueva clave de pruebas. Antes de publicar una variante `.testing`
+se debe añadir la huella real verificada, sin borrar otras asociaciones del sitio.
+La compilación Vite en `dist/` es estática y por sí sola no incluye la API de
+bóveda: no desplegarla como sustituto completo del servicio publicado.
+
 La firma original no está disponible. Una clave diferente no actualiza la app
 original del mismo paquete. Se creó una clave local nueva para el paquete
 `.testing` y se verificó la firma de una APK de prueba sin la función completa.
