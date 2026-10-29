@@ -30,6 +30,12 @@
 
     
 
+    <!-- Declared only; no permission is requested unless the future user action enables the overlay. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name="Application"
         android:allowBackup="true"
@@ -167,6 +173,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/filepaths" />
         </provider>
+
+        <!-- Not exported and not yet reachable from the app: integration remains a draft. -->
+        <service android:name=".FloatingService" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled floating stopwatch" />
+        </service>
 
         <service
             android:name=".DelegationService"

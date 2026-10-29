@@ -2,8 +2,8 @@
 
 **Estado: no implementado. No desplegar ni distribuir como 1.1.0.** Esta rama
 conserva la aplicación existente y solo incorpora una protección parcial para el
-guardado del cronómetro web y componentes preparatorios; no contiene una
-ventana flotante ni un puente TWA conectado.
+guardado del cronómetro web y componentes preparatorios; la ventana nativa
+no está conectada ni accesible desde la aplicación.
 
 ## Base comprobada
 
@@ -12,7 +12,7 @@ ventana flotante ni un puente TWA conectado.
   tampoco encontró `98eada6` ni `399651f` al consultarlos.
 - `LauncherActivity` deriva de Android Browser Helper. El contenedor abre el
   sitio HTTPS mediante TWA; el fallback configurado es Custom Tabs. No existe
-  `FloatingService`, `FloatingActivity` ni `floating-bridge` en esta base.
+  `FloatingService`, `FloatingActivity` ni `floating-bridge` en la base original.
   En Android Browser Helper 2.6.2, `LauncherActivity` permite personalizar el
   callback y el `TwaLauncher`, pero la sesión de `TwaLauncher` es privada.
   El canal debe usar la misma sesión que abre la TWA; crear una segunda sesión
@@ -35,6 +35,10 @@ ventana flotante ni un puente TWA conectado.
 - `floating-bridge.ts` es un transporte web aislado y probado con puertos
   simulados, pero no se instancia en la aplicación ni existe todavía el extremo
   Android. La prueba simulada no demuestra una conexión real con Chrome.
+- `FloatingService` contiene una ventana compacta no exportada y todavía no
+  accesible; no controla ningún cronómetro. El arrastre y los límites son código
+  preliminar que requiere pruebas en teléfonos y distintas versiones Android.
+  No se solicita ningún permiso ni se arranca el servicio desde la interfaz.
 
 ## Diseño pendiente antes de implementar
 
