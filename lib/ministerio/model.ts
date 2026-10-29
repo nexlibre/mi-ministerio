@@ -2,7 +2,7 @@ export const roles=['Publicador','Precursor auxiliar','Precursor regular','Precu
 export const kinds=['Casa en casa','Predicación informal','Predicación pública','Predicación telefónica','Videollamada','Revisita','Estudio bíblico','Otra actividad'];
 export const statuses=['Nueva persona','Interesada','Revisita','Estudio bíblico','Contacto ocasional','Pendiente','Archivada'];
 export type RecordItem={id:string;createdAt:string;updatedAt:string;[key:string]:any};
-export type State={version:1;profile:Record<string,any>;appointments:RecordItem[];activities:RecordItem[];people:RecordItem[];conversations:RecordItem[];events:RecordItem[];goals:RecordItem[];notes:RecordItem[];readings:RecordItem[];reports:RecordItem[];timer:null|{id?:string;start:number;startedAt?:number;elapsed:number;running:boolean;kind:string;date:string};schedule:Record<string,string>;reading:Record<string,any>};
+export type State={version:1;profile:Record<string,any>;appointments:RecordItem[];activities:RecordItem[];people:RecordItem[];conversations:RecordItem[];events:RecordItem[];goals:RecordItem[];notes:RecordItem[];readings:RecordItem[];reports:RecordItem[];timer:null|{id?:string;revision?:number;recentCommands?:{id:string;revision:number;action:'pause'|'resume';at:number}[];start:number;startedAt?:number;elapsed:number;running:boolean;kind:string;date:string};schedule:Record<string,string>;reading:Record<string,any>};
 export const today=()=>new Date().toLocaleDateString('en-CA');
 export const monthNow=()=>today().slice(0,7);
 export function initial():State{return {version:1,profile:{name:'',preferred:'',role:'Publicador',theme:'system',hours:50,studies:5,visits:15,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,showGoals:true,showReading:true},appointments:[],activities:[],people:[],conversations:[],events:[],goals:[],notes:[],readings:[],reports:[],timer:null,schedule:{},reading:{book:'Génesis',chapter:1,daily:1,time:'19:00'}};}
@@ -12,8 +12,8 @@ export const duration=(minutes:number)=>`${Math.floor(minutes/60)} h ${Math.floo
 export function elapsed(timer:NonNullable<State['timer']>,now=Date.now()){return timer.elapsed+(timer.running?Math.max(0,now-timer.start):0);}
 // The form may remain open while the timer changes. Never clear a different or
 // resumed timer, and never append a second record on a repeated submission.
-export function finishTimedActivity(state:State,timerId:string,item:RecordItem):State {
- if(!state.timer||state.timer.id!==timerId||state.timer.running)throw Error('El cronómetro cambió. Vuelve a finalizar la actividad.');
+export function finishTimedActivity(state:State,timerId:string,item:RecordItem,expectedRevision?:number):State {
+ if(!state.timer||state.timer.id!==timerId||state.timer.running||(expectedRevision!==undefined&&(state.timer.revision??0)!==expectedRevision))throw Error('El cronómetro cambió. Vuelve a finalizar la actividad.');
  if(state.activities.some(activity=>activity.timerId===timerId))throw Error('Esta actividad ya se guardó.');
  return {...state,timer:null,activities:[...state.activities,{...item,timerId}]};
 }

@@ -2,7 +2,8 @@
 
 **Estado: no implementado. No desplegar ni distribuir como 1.1.0.** Esta rama
 conserva la aplicación existente y solo incorpora una protección parcial para el
-guardado del cronómetro web; no contiene una ventana flotante ni un puente TWA.
+guardado del cronómetro web y componentes preparatorios; no contiene una
+ventana flotante ni un puente TWA conectado.
 
 ## Base comprobada
 
@@ -12,6 +13,10 @@ guardado del cronómetro web; no contiene una ventana flotante ni un puente TWA.
 - `LauncherActivity` deriva de Android Browser Helper. El contenedor abre el
   sitio HTTPS mediante TWA; el fallback configurado es Custom Tabs. No existe
   `FloatingService`, `FloatingActivity` ni `floating-bridge` en esta base.
+  En Android Browser Helper 2.6.2, `LauncherActivity` permite personalizar el
+  callback y el `TwaLauncher`, pero la sesión de `TwaLauncher` es privada.
+  El canal debe usar la misma sesión que abre la TWA; crear una segunda sesión
+  para mensajes no conecta automáticamente con la página ya abierta.
 - El cronómetro vive en el estado web cifrado, que `change()` guarda
   asíncronamente en IndexedDB y, para cuentas antiguas, sincroniza con revisión
   del servidor. El modo de contraseña bloquea al ocultar la página y elimina la
@@ -22,6 +27,14 @@ guardado del cronómetro web; no contiene una ventana flotante ni un puente TWA.
   antiguos sin identificador lo reciben al finalizar. Esto es una protección en
   memoria y en el estado cifrado de la web, **no** una garantía de sincronización
   entre procesos o pestañas, ni una transacción durable entre web y Android.
+- `timer-sync.ts` añade revisiones e identificadores a pausas y reanudaciones,
+  detecta reintentos recientes y rechaza comandos obsoletos. La página ya usa
+  esas transiciones. El historial queda dentro del estado cifrado y está limitado
+  a 128 comandos: un reintento más antiguo se trata como conflicto, no se aplica.
+  El resultado de la función no es una confirmación de persistencia.
+- `floating-bridge.ts` es un transporte web aislado y probado con puertos
+  simulados, pero no se instancia en la aplicación ni existe todavía el extremo
+  Android. La prueba simulada no demuestra una conexión real con Chrome.
 
 ## Diseño pendiente antes de implementar
 
