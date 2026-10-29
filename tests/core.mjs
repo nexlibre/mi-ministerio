@@ -7,6 +7,16 @@ const s=M.initial();s.profile.name='Prueba';s.appointments=[M.record({role:'Publ
 s.activities=[M.record({date:'2026-02-03',minutes:90,kind:'Estudio bíblico',person:'a',reportable:true}),M.record({date:'2026-02-04',minutes:30,kind:'Estudio bíblico',person:'a',reportable:true}),M.record({date:'2026-02-04',minutes:15,kind:'Estudio bíblico',person:'b',reportable:true}),M.record({date:'2026-02-04',minutes:700,kind:'Estudio bíblico',person:'c',reportable:false}),M.record({date:'2026-01-04',minutes:70,kind:'Estudio bíblico',person:'c',reportable:true})];
 assert.equal(M.metrics(s,'2026-02').minutes,135);assert.equal(M.metrics(s,'2026-02').studies,2);assert.equal(M.metrics(s,'2026-03').participated,false);assert.equal(M.roleAt(s,'2026-01'),'Publicador');assert.equal(M.roleAt(s,'2026-02'),'Precursor regular');
 assert.equal(M.elapsed({start:1000,elapsed:500,running:true,kind:'',date:''},4500),4000);assert.equal(M.elapsed({start:1000,elapsed:500,running:false,kind:'',date:''},4500),500);
+// A finishing form must not clear a replacement/resumed timer or save twice.
+const timerState={...M.initial(),timer:{id:'timer-a',start:1000,startedAt:1000,elapsed:60000,running:false,kind:'Otra actividad',date:'2026-02-03'}};
+const timedRecord=M.record({date:'2026-02-03',kind:'Otra actividad',minutes:1});
+const finished=M.finishTimedActivity(timerState,'timer-a',timedRecord);
+assert.equal(finished.timer,null);assert.equal(finished.activities.length,1);assert.equal(finished.activities[0].timerId,'timer-a');
+assert.throws(()=>M.finishTimedActivity(finished,'timer-a',timedRecord));
+assert.throws(()=>M.finishTimedActivity({...timerState,timer:{...timerState.timer,id:'timer-b'}},'timer-a',timedRecord));
+assert.throws(()=>M.finishTimedActivity({...timerState,timer:{...timerState.timer,running:true}},'timer-a',timedRecord));
+assert.throws(()=>M.finishTimedActivity({...timerState,activities:finished.activities},'timer-a',timedRecord));
+assert.equal(timerState.activities.length,0);
 assert.deepEqual(B.nextReading('Génesis',49,3),{book:'Éxodo',chapter:1});assert.equal(B.readingEnd('Génesis',49,3),50);
 const salt=V.salt(),key=await V.derive('test-password-123',salt),encrypted=await V.seal(s,key,salt);assert.deepEqual(await V.unseal(encrypted,key),s);assert.ok(!JSON.stringify(encrypted).includes('Prueba'));await assert.rejects(()=>V.unseal(encrypted,{}));const wrong=await V.derive('wrong-password',salt);await assert.rejects(()=>V.unseal(encrypted,wrong));const corrupted={...encrypted,cipher:encrypted.cipher.slice(0,-8)+'AAAAAAAA'};await assert.rejects(()=>V.unseal(corrupted,key));
 const apiURL=await load('app/api/vault/route.ts',[["import {database} from '@/db/vault';","const database=()=>globalThis.__testDB;"]]);const API=await import(apiURL);assert.equal((await API.GET(new Request('https://test/api/vault'))).status,401);assert.equal((await API.PUT(new Request('https://test/api/vault',{method:'PUT'}))).status,401);assert.equal((await API.DELETE(new Request('https://test/api/vault',{method:'DELETE'}))).status,401);
