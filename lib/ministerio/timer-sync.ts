@@ -11,7 +11,7 @@ export type TimerCommand = {
  action:'pause'|'resume';
  at:number;
 };
-type AppliedCommand = {id:string;revision:number;action:'pause'|'resume';at:number};
+type AppliedCommand = {id:string;revision:number;action:'start'|'pause'|'resume';at:number};
 export type ReconcileResult =
  | {status:'applied';timer:Timer}
  | {status:'duplicate';timer:Timer}

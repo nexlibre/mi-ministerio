@@ -14,7 +14,7 @@ final class TimerJournal {
     private static final long JS_SAFE_INTEGER = 9007199254740991L;
     private static final int MAX_PENDING = 128;
     interface Store { boolean commit(State state); }
-    enum Action { PAUSE, RESUME }
+    enum Action { START, PAUSE, RESUME }
     enum Result { APPLIED, DUPLICATE, CONFLICT, STORAGE_ERROR }
 
     static final class Timer {
@@ -90,11 +90,19 @@ final class TimerJournal {
     synchronized Result transition(Command command) {
         if (command == null || command.id == null || command.id.isEmpty() || command.action == null
                 || command.timerId == null || command.timerId.isEmpty() || command.at < 0
-                || command.expectedRevision < 0) return Result.CONFLICT;
+                || command.at > JS_SAFE_INTEGER
+                || (command.action == Action.START ? command.expectedRevision != -1 : command.expectedRevision < 0)) return Result.CONFLICT;
         for (Command pending : state.pending)
             if (pending.id.equals(command.id)) return pending.same(command) ? Result.DUPLICATE : Result.CONFLICT;
         if (state.pending.size() >= MAX_PENDING) return Result.CONFLICT;
         Timer timer=state.timer;
+        if (command.action == Action.START) {
+            if (state.workspace == null || timer != null || !state.pending.isEmpty()) return Result.CONFLICT;
+            Timer started=new Timer(command.timerId,0,command.at,0,true);
+            if (!started.valid()) return Result.CONFLICT;
+            List<Command> pending=new ArrayList<>();pending.add(command);
+            return save(new State(state.workspace,started,pending));
+        }
         if (state.workspace == null || timer == null || !timer.valid() || !timer.id.equals(command.timerId)
                 || timer.revision != command.expectedRevision || command.at < timer.start
                 || (command.action == Action.PAUSE) != timer.running) return Result.CONFLICT;

@@ -30,4 +30,13 @@ const encryptedResult=await R.reconcileFloatingCommand({workspace:'workspace',co
 assert.equal(encryptedResult.status,'ack');const envelope=(await V.readCache()).payload;
 assert.ok(!JSON.stringify(envelope).includes('workspace'));const recovered=await V.unseal(envelope,key);
 assert.equal(recovered.timer.recentCommands.at(-1).id,'c3');assert.equal(recovered.timer.elapsed,5000);
+// A floating start can be replayed without starting twice or reviving a saved timer.
+state={...M.initial(),profile:{...M.initial().profile,floatingWorkspaceId:'workspace'},timer:null};
+const start={id:'start-1',timerId:'new-timer',expectedRevision:-1,at:10000,action:'start'};
+assert.deepEqual(await run(start),{status:'ack',commandId:'start-1',revision:0});
+assert.equal(state.timer.startedAt,10000);assert.equal(state.timer.kind,M.kinds[0]);
+assert.deepEqual(await run(start),{status:'ack',commandId:'start-1',revision:0});
+assert.equal((await run({...start,id:'other'})).status,'conflict');
+state={...state,timer:null,activities:[M.record({timerId:'new-timer'})]};
+assert.equal((await run(start)).status,'conflict');
 console.log('PASS: command reconciliation persists encrypted state before acknowledgement and rejects stale workspaces, locks and concurrent replacement.');

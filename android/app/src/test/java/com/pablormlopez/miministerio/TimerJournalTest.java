@@ -13,6 +13,21 @@ public class TimerJournalTest {
     private TimerJournal.Timer running() { return new TimerJournal.Timer("timer",0,1000,500,true); }
     private TimerJournal.Command pause() { return new TimerJournal.Command("one","timer",0,4500,TimerJournal.Action.PAUSE); }
 
+    @Test public void startCanBeQueuedRetriedAndAcknowledged() throws Exception {
+        Store store=new Store();TimerJournal j=new TimerJournal(store,empty());
+        assertEquals(TimerJournal.Result.APPLIED,j.install("workspace",null));
+        TimerJournal.Command start=new TimerJournal.Command("start","timer",-1,1000,TimerJournal.Action.START);
+        assertEquals(TimerJournal.Result.APPLIED,j.transition(start));
+        assertEquals(TimerJournal.Result.DUPLICATE,j.transition(start));
+        assertEquals(0,j.snapshot().timer.revision);assertTrue(j.snapshot().timer.running);
+        assertEquals(TimerJournal.Result.APPLIED,j.transition(pause()));
+        TimerJournal.State decoded=TimerJournalCodec.decode(TimerJournalCodec.encode(j.snapshot()));
+        TimerJournal restored=new TimerJournal(store,decoded);
+        assertEquals(TimerJournal.Result.APPLIED,restored.acknowledge("workspace","start",0));
+        assertEquals(TimerJournal.Result.APPLIED,restored.acknowledge("workspace","one",1));
+        assertEquals(3500,restored.snapshot().timer.elapsed);
+        assertEquals(TimerJournal.Result.CONFLICT,restored.transition(start));
+    }
     @Test public void writesBeforePublishingAndSurvivesRestore() {
         Store store=new Store();TimerJournal journal=new TimerJournal(store,empty());
         assertEquals(TimerJournal.Result.APPLIED,journal.install("workspace",running()));
