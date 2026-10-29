@@ -135,6 +135,13 @@ huella ni podría actualizar aquella APK de prueba. No se ha comprobado que exis
 una copia guardada fuera del entorno. Ninguna de las variantes presupone acceso a
 los datos del navegador original. No desinstalar la aplicación original.
 
+Para la siguiente prueba se generó otra clave local distinta y se firmó la APK
+`com.pablormlopez.miministerio.testing`; su certificado SHA-256 es
+`72:75:A3:38:04:41:31:15:E4:DD:87:35:CC:2C:92:9A:3F:79:56:26:EF:EC:9E:1F:FB:09:5B:4D:11:93:42:0B`.
+El APK se verificó con esquemas v1/v2/v3, pero abre la web publicada anterior;
+su firma no demuestra que el flotante funcione. La clave privada no está en Git
+ni debe subirse. El archivo de asociación para esta huella no está publicado.
+
 Pendiente en teléfono físico: activar y denegar/conceder el permiso; salir a otra
 app; arrastrar a bordes, rotar y recuperar posición; pausar/reanudar en ambas
 interfaces; volver, desbloquear y guardar una sola actividad; cerrar/reabrir,
