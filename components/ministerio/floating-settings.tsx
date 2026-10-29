@@ -12,10 +12,10 @@ export function FloatingSettings(p:Props){
  const update=(v:Partial<FloatingOptions>)=>p.onOptions({...p.options,...v});
  return <section className="card floating-settings">
   <div className="section-title"><div><h2>Cronómetro flotante</h2><p className="muted">El mismo cronómetro de Actividad, visible sobre otras aplicaciones.</p></div></div>
-  <p className="muted">{!p.connected?'Disponible en Mi Ministerio para Android con la conexión segura activa.':p.enabled?(p.visible?'Ventana visible':'Ventana oculta; el cronómetro sigue activo.'):'Desactivado'}</p>
+  <p className="muted">{!p.connected?'Disponible en Mi Ministerio para Android con la conexión segura activa.':p.enabled?(p.visible?'Ventana visible':'Ventana oculta. El cronómetro conserva su estado.'):'Desactivado'}</p>
   <div className="button-row">
    {!p.enabled&&!p.prepared&&<button className="secondary" disabled={!p.connected||p.busy} onClick={p.onPrepare}>Activar cronómetro flotante</button>}
-   {(!p.enabled&&p.prepared||p.enabled&&!p.visible)&&<a className="secondary" href={url} aria-disabled={!canActivate} onClick={e=>{if(!canActivate)e.preventDefault();}}>{p.enabled?'Mostrar ventana':'Continuar y conceder permiso'}</a>}
+   {(!p.enabled&&p.prepared||p.enabled&&!p.visible)&&<a className="secondary" href={url} aria-disabled={!canActivate} onClick={e=>{if(!canActivate)e.preventDefault();}}>{p.enabled?'Mostrar ventana / conceder permiso':'Continuar y conceder permiso'}</a>}
    {p.enabled&&<button className="text-button" disabled={!p.connected||!p.ready||p.busy} onClick={p.onDisable}>Desactivar</button>}
   </div>
   {(p.enabled||p.prepared)&&<div className="floating-option-grid">

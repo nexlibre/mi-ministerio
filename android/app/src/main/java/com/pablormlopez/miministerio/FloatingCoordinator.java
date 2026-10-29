@@ -23,7 +23,7 @@ final class FloatingCoordinator {
     private long activationExpires;
     private Sender sender;
     private Observer observer;
-    private boolean damaged;
+    private boolean damaged, overlayVisible;
 
     static synchronized FloatingCoordinator get(Context context) {
         if(instance==null)instance=new FloatingCoordinator(context.getApplicationContext());
@@ -49,7 +49,13 @@ final class FloatingCoordinator {
         boolean valid=token!=null && token.equals(activationToken) && android.os.SystemClock.elapsedRealtime()<activationExpires;
         activationToken=null;return valid;
     }
+    void overlayShown() {
+        overlayVisible=true;
+        if(sender==null)return;
+        try {sender.send(new JSONObject().put("type","overlay-enabled").toString());} catch(JSONException ignored) { }
+    }
     void overlayHidden() {
+        overlayVisible=false;
         if(sender==null)return;
         try {sender.send(new JSONObject().put("type","overlay-hidden").toString());} catch(JSONException ignored) { }
     }
@@ -59,7 +65,7 @@ final class FloatingCoordinator {
         catch(JSONException ignored) { }
     }
     TimerJournal.State snapshot() { return journal.snapshot(); }
-    boolean available() { return !damaged && journal.snapshot().workspace!=null; }
+    boolean available() { return !damaged && journal.snapshot().workspace!=null && context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).getBoolean("enabled",false); }
     private void notifyObserver() { if(observer!=null)main.post(observer::onTimerChanged); }
 
     /** Persist first; then ask the web to reconcile. Failed writes never change the display. */
@@ -82,7 +88,8 @@ final class FloatingCoordinator {
             if("web-ready".equals(type)) {
                 if(sender!=null)sender.send(new JSONObject().put("type","native-ready")
                     .put("package",context.getPackageName())
-                    .put("enabled",context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).getBoolean("enabled",false)).toString());
+                    .put("enabled",context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).getBoolean("enabled",false))
+                    .put("visible",overlayVisible).toString());
             } else if("arm-activation".equals(type)) {
                 String token=input.optString("token","");
                 if(!token.matches("[a-zA-Z0-9-]{16,128}"))return;
@@ -122,9 +129,23 @@ final class FloatingCoordinator {
                 int alpha=Math.max(80,Math.min(255,input.optInt("alpha",230)));
                 float scale=(float)Math.max(.75,Math.min(1.35,input.optDouble("scale",1)));
                 int active=input.optInt("activeColor",0xffe8c56a),paused=input.optInt("pausedColor",0xffc6d3d8);
-                context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).edit().putInt("style",style).putInt("alpha",alpha)
-                        .putFloat("scale",scale).putInt("activeColor",active).putInt("pausedColor",paused).apply();
+                android.content.SharedPreferences prefs=context.getSharedPreferences("floating-display",Context.MODE_PRIVATE);
+                if(prefs.getInt("style",0)==style && prefs.getInt("alpha",230)==alpha && prefs.getFloat("scale",1f)==scale
+                        && prefs.getInt("activeColor",0xffe8c56a)==active && prefs.getInt("pausedColor",0xffc6d3d8)==paused)return;
+                prefs.edit().putInt("style",style).putInt("alpha",alpha).putFloat("scale",scale)
+                        .putInt("activeColor",active).putInt("pausedColor",paused).apply();
                 if(observer!=null)main.post(observer::onAppearanceChanged);
+            } else if("disable-floating".equals(type)) {
+                String workspace=input.getString("workspace"),requestId=input.getString("requestId");
+                TimerJournal.State state=journal.snapshot();
+                boolean ok=workspace.equals(state.workspace) && !requestId.isEmpty() && requestId.length()<=128
+                        && state.timer==null && state.pending.isEmpty() && !state.finishing;
+                if(ok) {
+                    ok=context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).edit().putBoolean("enabled",false).commit();
+                    if(ok)context.stopService(new android.content.Intent(context,FloatingService.class));
+                }
+                if(sender!=null)sender.send(new JSONObject().put("type","disable-result").put("workspace",workspace)
+                        .put("requestId",requestId).put("result",ok?"applied":"conflict").toString());
             // Do not expose a direct timer-clear message: discard must first
             // freeze a paused timer and persist an encrypted terminal receipt,
             // then acknowledge via end-finish. Clearing native first would lose

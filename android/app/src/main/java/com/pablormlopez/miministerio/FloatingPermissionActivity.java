@@ -51,10 +51,10 @@ public final class FloatingPermissionActivity extends Activity {
         if(finished)return;finished=true;
         if(approved){
             try {
+                if(!getSharedPreferences("floating-display",MODE_PRIVATE).edit().putBoolean("enabled",true).commit())throw new IllegalStateException("Cannot save activation");
                 Intent service=new Intent(this,FloatingService.class);
                 if(Build.VERSION.SDK_INT>=26)startForegroundService(service);else startService(service);
-                getSharedPreferences("floating-display",MODE_PRIVATE).edit().putBoolean("enabled",true).apply();
-            } catch(RuntimeException error){approved=false;}
+            } catch(RuntimeException error){getSharedPreferences("floating-display",MODE_PRIVATE).edit().putBoolean("enabled",false).apply();approved=false;}
         }
         coordinator.activationResult(approved);finish();
     }

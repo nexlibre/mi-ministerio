@@ -141,6 +141,7 @@ public final class FloatingService extends Service {
         params.gravity = Gravity.TOP | Gravity.LEFT;
         try {
             windows.addView(root, params);
+            coordinator.overlayShown();
             root.post(this::restorePosition);
             refreshTimer();
             handler.post(repaint);

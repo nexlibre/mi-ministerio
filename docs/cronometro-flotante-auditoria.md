@@ -1,9 +1,9 @@
 # Cronómetro flotante 1.1.0 — auditoría y trabajo pendiente
 
-**Estado: no implementado. No desplegar ni distribuir como 1.1.0.** Esta rama
-conserva la aplicación existente y añade componentes experimentales para la
-ventana y el canal TWA. Todavía no existe una opción accesible en la interfaz
-ni un flujo completo de activación y finalización.
+**Estado: integración experimental; no validada para distribución 1.1.0.**
+Esta rama conserva la aplicación existente y conecta la opción de Actividad, el
+canal TWA y el diario. El flujo funciona en una simulación automatizada, pero
+no se han validado Chrome, permisos, gestos ni recuperación en Android real.
 
 ## Base comprobada
 
@@ -35,17 +35,18 @@ ni un flujo completo de activación y finalización.
 - `floating-reconcile.ts` comprueba persistencia y rechaza reemplazos concurrentes;
   se probó con IndexedDB y datos cifrados ficticios. La página registra el
   transporte y puede procesar comandos para un espacio identificado, pero la
-  interfaz no crea todavía esa identidad ni controla el flujo completo. Falta
-  serializar otras operaciones y tratar restauración y cambio de espacio.
-- `floating-finish.ts` y el bloqueo nativo de finalización son componentes
-  probados aisladamente; no están conectados al formulario de Actividad.
+  interfaz crea una identidad y enlaza los controles; falta validar otras
+  operaciones concurrentes, restauración y cambio de espacio en dispositivos.
+- `floating-finish.ts` y el bloqueo nativo se conectan al formulario de
+  Actividad y al descarte. Existe una prueba web integrada con nativo simulado,
+  incluida pérdida de una confirmación; no sustituye pruebas de Android real.
 - `FloatingTwaLauncher` usa la misma sesión para TWA y postMessage. Es código
   experimental: requiere verificar la asociación digital publicada y probar
   navegación y reconexión en un navegador y dispositivo reales.
 - `FloatingService` está conectado al diario nativo y tiene una ventana
-  compacta, pero no se puede activar desde la interfaz. El flujo nativo para
-  permisos existe y exige un token de activación; no se solicitan permisos en
-  el lanzamiento normal. Falta la opción y sus ajustes en Actividad.
+  compacta, con activación desde Actividad. El flujo nativo para permisos
+  exige un token de activación; no se solicitan permisos en el lanzamiento
+  normal. Falta verificar el flujo real de permisos y la interacción táctil.
   `OverlayPositionTest` comprueba límites y coordenadas relativas, no los
   gestos reales ni los insets de dispositivos Android.
 - `TimerJournal` usa almacenamiento atómico fuera de las copias Android.
@@ -54,7 +55,7 @@ ni un flujo completo de activación y finalización.
   y confirmación durable aún necesitan integración y validación de extremo a
   extremo, especialmente después de restaurar una copia.
 
-## Diseño pendiente antes de implementar
+## Requisitos de validación pendientes
 
 1. Mantener el mismo origen de navegador y IndexedDB; no sustituir la TWA por
    WebView. Diseñar y probar una sesión Custom Tabs/postMessage bidireccional
@@ -87,18 +88,17 @@ ni un flujo completo de activación y finalización.
    ajustes; probar Cristal, Oscuro, Claro y Minimalista, opacidad y colores de
    ambos estados, y tamaño mínimo con zonas táctiles utilizables.
 
-## Avances aislados y bloqueos de integración
+## Integración y limitaciones de validación
 
-Existe un prototipo de ajustes en `components/ministerio/floating-settings.tsx`,
-**no conectado a la interfaz**, y el servicio puede recibir preferencias visuales
-por el puente. Las pruebas de renderizado comprueban que el enlace de activación
+La opción de ajustes de `components/ministerio/floating-settings.tsx` está
+conectada a Actividad y el servicio puede recibir preferencias visuales por el
+puente. Las pruebas de renderizado comprueban que el enlace de activación
 solo aparece con paquete y token válidos y conexión preparada; no comprueban que
 Android lo abra ni que los controles sean usables en pantalla. El recibo de una
 finalización pendiente se conserva junto al registro cifrado y no puede ser
-reemplazado por otro; falta conectarlo con un protocolo completo de reintento.
-Hay además un recibo cifrado de descarte probado aisladamente para permitir un
-bloqueo/confirmación en dos fases sin borrar primero el diario nativo. La página
-no lo usa todavía. Las instantáneas que envía el puente esperan a la cola de
+reemplazado por otro; se reintenta al reconectar y en la prueba simulada.
+El descarte también usa un recibo cifrado y bloqueo/confirmación en dos fases
+sin borrar primero el diario nativo. Las instantáneas que envía el puente esperan a la cola de
 escritura y exigen que el estado actual ya esté guardado; esto no resuelve todas
 las carreras con restauración ni sincronización remota.
 
@@ -106,11 +106,10 @@ Se corrigió la recepción del puerto de Chrome: el evento `window.message`
 transfiere el puerto y el saludo llega después a ese puerto. Las pruebas con
 MessageChannel real verifican ese orden, pero no sustituyen Chrome en Android.
 
-No activar el prototipo hasta resolver y probar la serialización de cambios de
-la bóveda con los comandos del puente, recuperación después de perder un ACK,
-y el orden durable de cancelación y desactivación. En particular, el permiso
-puede ocultar y bloquear la página antes de que llegue el resultado de activación;
-ese resultado no debe perderse ni permitir controles locales simultáneos. La
+Antes de distribuir, validar la serialización de cambios de la bóveda con los
+comandos del puente y la recuperación tras perder un ACK, especialmente en
+Android real, junto al orden durable de cancelación y desactivación. El permiso puede ocultar y bloquear la página antes de que llegue el resultado;
+la prueba simulada cubre ese caso, pero falta comprobarlo con Android y Chrome. La
 reconexión y restauración requieren una fuente de verdad y resolución explícita
 de conflictos, también si falla la escritura cifrada. El servicio y la UI no
 se consideran integrados solo porque sus componentes compilen.
