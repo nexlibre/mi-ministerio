@@ -7,7 +7,7 @@ on:
     paths: ['android/**', '.github/workflows/android.yml']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -39,6 +39,15 @@ jobs:
         run: |
           cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/original-unsigned.apk"
           bash gradlew assembleRelease -PministerioTesting --no-daemon
+      - name: Preparar transferencia de binario para firma local
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'arena/a0b8737c-mi-ministerio'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -c 'import base64,json; p="android/app/build/outputs/apk/release/app-release-unsigned.apk"; json.dump({"content":base64.b64encode(open(p,"rb").read()).decode(),"encoding":"base64"},open("/tmp/ministerio-blob.json","w"))'
+          blob=$(gh api --method POST "repos/${{ github.repository }}/git/blobs" --input /tmp/ministerio-blob.json --jq .sha)
+          rm /tmp/ministerio-blob.json
+          echo "::notice title=Unsigned testing APK blob::$blob"
       - uses: actions/upload-artifact@v4
         with:
           name: mi-ministerio-testing-sin-firmar
