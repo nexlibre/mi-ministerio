@@ -78,7 +78,8 @@ final class FloatingTwaLauncher extends TwaLauncher {
             @Override public void onMessageChannelReady(@Nullable Bundle extras) {
                 original.onMessageChannelReady(extras);
                 if (destroyed || !validated || !navigated || session == null) return;
-                if (session.postMessage(HANDSHAKE, null) == CustomTabsService.RESULT_SUCCESS) setReady(true);
+                setReady(true);
+                if (session.postMessage(HANDSHAKE, null) != CustomTabsService.RESULT_SUCCESS) setReady(false);
             }
             @Override public void onPostMessage(@NonNull String message, @Nullable Bundle extras) {
                 original.onPostMessage(message, extras);

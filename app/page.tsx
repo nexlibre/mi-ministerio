@@ -8,6 +8,8 @@ import {Dialog,DialogContent,DialogTitle,DialogDescription} from '@/components/u
 import {State,RecordItem,roles,kinds,statuses,initial,record,today,monthNow,metrics,duration,elapsed,finishTimedActivity,roleAt,monthLabel,validateState} from '@/lib/ministerio/model';
 import {books,readingEnd,nextReading,bibleLinks} from '@/lib/ministerio/books';
 import {identifyTimer,applyTimerCommand} from '@/lib/ministerio/timer-sync';
+import {createFloatingBridge} from '@/lib/ministerio/floating-bridge';
+import {reconcileFloatingCommand} from '@/lib/ministerio/floating-reconcile';
 import {Cache,Envelope,derive,salt,seal,unseal,readCache,writeCache,remote,push,readDeviceAccess,writeDeviceAccess,matchesDeviceAccess,openWorkspace,isLocalOwner} from '@/lib/ministerio/vault';
 type Field={name:string;label:string;type?:string;options?:string[]|{value:string,label:string}[];required?:boolean;value?:any;min?:number;max?:number;hint?:string};
 type Modal={title:string;description?:string;fields:Field[];submit:(v:any)=>void|Promise<void|boolean>;initial?:any};
@@ -44,6 +46,7 @@ export default function App(){
  }
  const [state,setState]=useState<State|null>(null),[cache,setCache]=useState<Cache|null>(null),[ready,setReady]=useState(false),[loading,setLoading]=useState(false),[tab,setTab]=useState('Inicio'),[section,setSection]=useState(''),[month,setMonth]=useState(monthNow()),[selectedDay,setSelectedDay]=useState(today()),[query,setQuery]=useState(''),[filter,setFilter]=useState('Todas'),[modal,setModal]=useState<Modal|null>(null),[detail,setDetail]=useState<string|null>(null),[toast,setToast]=useState(''),[sync,setSync]=useState('Guardado local'),[conflict,setConflict]=useState(false),[tick,setTick]=useState(Date.now()),[online,setOnline]=useState(true),[report,setReport]=useState<RecordItem|null>(null),[reportText,setReportText]=useState(''),[viewWeek,setViewWeek]=useState(false);
  const current=useRef<State|null>(null),cached=useRef<Cache|null>(null),key=useRef<CryptoKey|null>(null),saltRef=useRef(''),owner=useRef(''),queue=useRef(Promise.resolve()),lastAction=useRef(Date.now()),localConflict=useRef(false);
+ const floatingBridge=useRef<ReturnType<typeof createFloatingBridge>|null>(null),floatingQueue=useRef(Promise.resolve()),floatingGeneration=useRef(0);
  function notify(s:string){setToast(s);setTimeout(()=>setToast(''),5000);}
  function change(next:State):Promise<boolean>{current.current=next;setState(next);if(demo.current){setSync(t('review_banner'));return Promise.resolve(false);}const keyCopy=key.current,ownerCopy=owner.current,saltCopy=saltRef.current;if(!keyCopy)return Promise.resolve(false);let locallySaved=false;const pending=queue.current.then(async()=>{try{const payload=await seal(next,keyCopy,saltCopy);const c:Cache={owner:ownerCopy,revision:cached.current?.revision||0,payload,dirty:true};await writeCache(c);locallySaved=true;cached.current=c;setCache(c);setSync('Guardado en este dispositivo');if(!isLocalOwner(c.owner)&&navigator.onLine&&!localConflict.current){try{c.revision=await push(c);c.dirty=false;await writeCache(c);cached.current=c;setCache({...c});setSync('Copia cifrada actualizada');}catch(e){if((e as Error).message==='CONFLICT'){setConflict(true);localConflict.current=true;setSync('Copia en conflicto');}else setSync('Guardado local · pendiente de conexión');}}}catch{setSync('No se pudo guardar');notify(t('message_002'));}});queue.current=pending;return pending.then(()=>locallySaved);}
  async function connect(){if(demo.current)return;try{const c=cached.current;if(!c)return;if(isLocalOwner(c.owner)){setSync('Guardado en este dispositivo');return;}const r=await remote();if(r.owner!==c.owner)throw Error('Cuenta diferente');if(c.dirty&&r.revision!==c.revision){setConflict(true);localConflict.current=true;return;}if(c.dirty){c.revision=await push(c);c.dirty=false;await writeCache(c);cached.current=c;setCache({...c});}else if(r.revision>c.revision){setConflict(true);localConflict.current=true;return;}setSync('Copia cifrada actualizada');}catch{setSync('Guardado local · conexión pendiente');}}
@@ -64,6 +67,37 @@ export default function App(){
   }
  }catch{setPasswordMode(true);}
  if(active)setReady(true);}}catch{notify(t('message_003'));setReady(true);}})();setOnline(navigator.onLine);const on=()=>{setOnline(true);void connect();},off=()=>setOnline(false);window.addEventListener('online',on);window.addEventListener('offline',off);const timerInterval=setInterval(()=>{setTick(Date.now());if(requirePasswordRef.current&&key.current&&Date.now()-lastAction.current>300000){key.current=null;current.current=null;setState(null);setModal(null);setDetail(null);setReport(null);}},1000);const touch=()=>{lastAction.current=Date.now();};window.addEventListener('pointerdown',touch);window.addEventListener('keydown',touch);const hide=()=>{if(document.hidden&&requirePasswordRef.current&&key.current){key.current=null;current.current=null;setState(null);setModal(null);setDetail(null);setReport(null);}};document.addEventListener('visibilitychange',hide);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').then(()=>navigator.serviceWorker.ready).then(reg=>{reg.active?.postMessage({type:'CACHE_SHELL',urls:['/',...performance.getEntriesByType('resource').map(x=>x.name).filter(x=>{const u=new URL(x);return u.origin===location.origin&&/\.(js|css|woff2?)(\?|$)/.test(u.pathname);})]});}).catch(()=>{});return()=>{active=false;clearInterval(timerInterval);window.removeEventListener('online',on);window.removeEventListener('offline',off);window.removeEventListener('pointerdown',touch);window.removeEventListener('keydown',touch);document.removeEventListener('visibilitychange',hide);};},[]);
+ // This channel is dormant until the native app establishes a DAL-validated
+ // session and the encrypted workspace has an explicit floating identity.
+ useEffect(()=>{
+  if(location.origin!=='https://mi-ministerio-pablo.pablormlopez.chatgpt.site')return;
+  const bridge=createFloatingBridge({target:window,origin:location.origin,onConnectionChange:connected=>{
+   floatingGeneration.current++;
+   if(connected){bridge.send({type:'web-ready'});const s=current.current;if(s?.profile.floatingWorkspaceId)bridge.send({type:'request-pending',workspace:s.profile.floatingWorkspaceId});}
+  },onMessage:message=>{
+   if(typeof message.workspace!=='string')return;
+   const generation=floatingGeneration.current,workspace=message.workspace;
+   if(message.type==='pending-drained'){
+    const s=current.current,t=s?.timer;if(!s||s.profile.floatingWorkspaceId!==workspace||t&&!t.id)return;
+    bridge.send({type:'timer-snapshot',workspace,timer:t?{id:t.id,revision:t.revision??0,start:t.start,elapsed:t.elapsed,running:t.running}:null});
+    return;
+   }
+   if(message.type!=='timer-command')return;
+   const command=message.command;
+   floatingQueue.current=floatingQueue.current.then(async()=>{
+    const result=await reconcileFloatingCommand({workspace,command,current:()=>current.current,persist:change});
+    if(generation!==floatingGeneration.current)return;
+    if(result.status==='ack')bridge.send({type:'timer-ack',workspace,commandId:result.commandId,revision:result.revision});
+    else bridge.send({type:'timer-rejected',workspace,reason:result.status});
+   }).catch(()=>{});
+  }});
+  floatingBridge.current=bridge;
+  return()=>{floatingBridge.current=null;bridge.dispose();};
+ },[]);
+ useEffect(()=>{
+  const bridge=floatingBridge.current,workspace=state?.profile.floatingWorkspaceId;
+  if(bridge?.connected&&workspace)bridge.send({type:'request-pending',workspace});
+ },[state]);
  useEffect(()=>{const theme=state?.profile.theme||'system';document.documentElement.dataset.theme=theme==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):theme;},[state?.profile.theme]);
  useEffect(()=>{const mc=(document as any).modelContext;if(!mc?.registerTool)return;const controller=new AbortController();mc.registerTool({name:'navigate_ministry',description:t('message_004'),inputSchema:{type:'object',properties:{section:{type:'string',enum:['Inicio','Actividad','Personas','Agenda','Perfil']}},required:['section'],additionalProperties:false},annotations:{readOnlyHint:true},execute:(input:any)=>{if(!current.current)throw Error('Desbloquea la app primero');if(!nav.some(x=>x[0]===input.section))throw Error('Sección no válida');setTab(input.section);setSection('');return {section:input.section};}},{signal:controller.signal});return()=>controller.abort();},[]);
  async function unlock(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setLoading(true);const f=new FormData(e.currentTarget);try{const password=String(f.get('password'));if(!cache&&password!==f.get('confirm'))throw Error('Las contraseñas no coinciden.');const s=cache?.payload.salt||salt();const k=await derive(password,s);const next=cache?await unseal(cache.payload,k):initial();key.current=k;saltRef.current=s;current.current=next;setState(next);lastAction.current=Date.now();go('Inicio');if(!cache){change(next);await queue.current;}

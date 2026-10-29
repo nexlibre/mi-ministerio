@@ -63,12 +63,18 @@ final class FloatingCoordinator {
             JSONObject input=new JSONObject(message);
             String type=input.optString("type","");
             if("request-pending".equals(type)) {
-                if(journal.snapshot().workspace!=null && journal.snapshot().workspace.equals(input.optString("workspace")))sendPending();
+                String requested=input.optString("workspace","");
+                if(requested.isEmpty() || requested.length()>128)return;
+                String existing=journal.snapshot().workspace;
+                if(existing==null)sendStatus("pending-drained",requested);
+                else if(existing.equals(requested)) {
+                    if(journal.snapshot().pending.isEmpty())sendStatus("pending-drained");else sendPending();
+                } else sendStatus("sync-conflict",requested);
             } else if("timer-ack".equals(type)) {
                 String workspace=input.optString("workspace","");String id=input.optString("commandId","");
                 if(!input.has("revision"))return;
                 TimerJournal.Result result=journal.acknowledge(workspace,id,input.getLong("revision"));
-                if(result==TimerJournal.Result.APPLIED){notifyObserver();sendPending();}
+                if(result==TimerJournal.Result.APPLIED){notifyObserver();if(journal.snapshot().pending.isEmpty())sendStatus("pending-drained");else sendPending();}
             } else if("timer-snapshot".equals(type)) {
                 String workspace=input.optString("workspace","");
                 if(workspace.isEmpty() || workspace.length()>128)return;
@@ -114,9 +120,10 @@ final class FloatingCoordinator {
             sender.send(new JSONObject().put("type","timer-command").put("workspace",state.workspace).put("command",command).toString());
         } catch(JSONException ignored) { }
     }
-    private void sendStatus(String type) {
+    private void sendStatus(String type) { sendStatus(type,journal.snapshot().workspace); }
+    private void sendStatus(String type,String workspace) {
         if(sender==null)return;
-        try { sender.send(new JSONObject().put("type",type).put("workspace",journal.snapshot().workspace).toString()); }
+        try { sender.send(new JSONObject().put("type",type).put("workspace",workspace).toString()); }
         catch(JSONException ignored) { }
     }
 }
