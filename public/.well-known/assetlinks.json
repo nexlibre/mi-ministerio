@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.use_as_origin"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.pablormlopez.miministerio",
+      "sha256_cert_fingerprints": [
+        "18:8C:9B:3A:4F:2A:5D:C5:9D:31:B6:81:0B:34:74:84:47:0D:7C:80:DE:46:BF:2C:0B:C5:6F:01:38:0E:C7:9A"
+      ]
+    }
+  }
+]

@@ -1,0 +1,10 @@
+import ts from 'typescript';import fs from 'node:fs/promises';import assert from 'node:assert/strict';
+const load=async path=>'data:text/javascript;base64,'+Buffer.from(ts.transpileModule(await fs.readFile(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText).toString('base64');
+const {floatingSnapshot}=await import(await load('lib/ministerio/floating-snapshot.ts'));
+const state={profile:{floatingWorkspaceId:'w'},timer:{id:'t',revision:2,start:100,elapsed:42,running:false}};
+assert.deepEqual(floatingSnapshot(state,state,'w'),{type:'timer-snapshot',workspace:'w',timer:{id:'t',revision:2,start:100,elapsed:42,running:false}});
+assert.equal(floatingSnapshot(null,state,'w'),null);assert.equal(floatingSnapshot(state,null,'w'),null);
+assert.equal(floatingSnapshot(state,{...state},'w'),null);assert.equal(floatingSnapshot(state,state,'other'),null);
+const legacy={...state,timer:{...state.timer,id:undefined}};assert.equal(floatingSnapshot(legacy,legacy,'w'),null);
+const empty={...state,timer:null};assert.deepEqual(floatingSnapshot(empty,empty,'w'),{type:'timer-snapshot',workspace:'w',timer:null});
+console.log('PASS: snapshots require the same durably saved unlocked workspace.');

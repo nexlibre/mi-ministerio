@@ -1,0 +1,90 @@
+package com.pablormlopez.miministerio;
+
+import org.junit.Test;
+import java.util.Collections;
+import static org.junit.Assert.*;
+
+public class TimerJournalTest {
+    private static final class Store implements TimerJournal.Store {
+        TimerJournal.State saved; boolean fail;
+        public boolean commit(TimerJournal.State state) { if (fail) return false; saved=state; return true; }
+    }
+    private TimerJournal.State empty() { return new TimerJournal.State(null,null,Collections.emptyList()); }
+    private TimerJournal.Timer running() { return new TimerJournal.Timer("timer",0,1000,500,true); }
+    private TimerJournal.Command pause() { return new TimerJournal.Command("one","timer",0,4500,TimerJournal.Action.PAUSE); }
+
+    @Test public void startCanBeQueuedRetriedAndAcknowledged() throws Exception {
+        Store store=new Store();TimerJournal j=new TimerJournal(store,empty());
+        assertEquals(TimerJournal.Result.APPLIED,j.install("workspace",null));
+        TimerJournal.Command start=new TimerJournal.Command("start","timer",-1,1000,TimerJournal.Action.START);
+        assertEquals(TimerJournal.Result.APPLIED,j.transition(start));
+        assertEquals(TimerJournal.Result.DUPLICATE,j.transition(start));
+        assertEquals(0,j.snapshot().timer.revision);assertTrue(j.snapshot().timer.running);
+        assertEquals(TimerJournal.Result.APPLIED,j.transition(pause()));
+        TimerJournal.State decoded=TimerJournalCodec.decode(TimerJournalCodec.encode(j.snapshot()));
+        TimerJournal restored=new TimerJournal(store,decoded);
+        assertEquals(TimerJournal.Result.APPLIED,restored.acknowledge("workspace","start",0));
+        assertEquals(TimerJournal.Result.APPLIED,restored.acknowledge("workspace","one",1));
+        assertEquals(3500,restored.snapshot().timer.elapsed);
+        assertEquals(TimerJournal.Result.CONFLICT,restored.transition(start));
+    }
+    @Test public void finishLockSurvivesRestartAndFinalizationIsIdempotent() throws Exception {
+        Store store=new Store();TimerJournal j=new TimerJournal(store,empty());j.install("workspace",running());
+        j.transition(pause());
+        assertEquals(TimerJournal.Result.CONFLICT,j.beginFinish("workspace","timer",1));
+        j.acknowledge("workspace","one",1);
+        assertEquals(TimerJournal.Result.CONFLICT,j.beginFinish("workspace","timer",0));
+        assertEquals(TimerJournal.Result.APPLIED,j.beginFinish("workspace","timer",1));
+        assertEquals(TimerJournal.Result.DUPLICATE,j.beginFinish("workspace","timer",1));
+        TimerJournal restored=new TimerJournal(store,TimerJournalCodec.decode(TimerJournalCodec.encode(j.snapshot())));
+        assertTrue(restored.snapshot().finishing);
+        TimerJournal.Command resume=new TimerJournal.Command("resume","timer",1,7000,TimerJournal.Action.RESUME);
+        assertEquals(TimerJournal.Result.CONFLICT,restored.transition(resume));
+        assertEquals(TimerJournal.Result.CONFLICT,restored.install("workspace",null));
+        assertEquals(TimerJournal.Result.APPLIED,restored.endFinish("workspace","timer",1,false));
+        assertEquals(TimerJournal.Result.APPLIED,restored.beginFinish("workspace","timer",1));
+        assertEquals(TimerJournal.Result.APPLIED,restored.endFinish("workspace","timer",1,true));
+        TimerJournal completed=new TimerJournal(store,TimerJournalCodec.decode(TimerJournalCodec.encode(restored.snapshot())));
+        assertEquals(TimerJournal.Result.DUPLICATE,completed.endFinish("workspace","timer",1,true));
+        assertEquals(TimerJournal.Result.CONFLICT,completed.transition(new TimerJournal.Command("again","timer",-1,9000,TimerJournal.Action.START)));
+    }
+    @Test public void writesBeforePublishingAndSurvivesRestore() {
+        Store store=new Store();TimerJournal journal=new TimerJournal(store,empty());
+        assertEquals(TimerJournal.Result.APPLIED,journal.install("workspace",running()));
+        store.fail=true;
+        assertEquals(TimerJournal.Result.STORAGE_ERROR,journal.transition(pause()));
+        assertEquals(0,journal.snapshot().timer.revision);assertTrue(journal.snapshot().pending.isEmpty());
+        store.fail=false;
+        assertEquals(TimerJournal.Result.APPLIED,journal.transition(pause()));
+        TimerJournal restored=new TimerJournal(store,store.saved);
+        assertEquals(4000,restored.snapshot().timer.elapsed);assertFalse(restored.snapshot().timer.running);
+        assertEquals(TimerJournal.Result.DUPLICATE,restored.transition(pause()));
+        assertEquals(1,restored.snapshot().pending.size());
+    }
+    @Test public void rejectsStaleSnapshotsAndAcknowledgesInOrder() {
+        Store store=new Store();TimerJournal j=new TimerJournal(store,empty());
+        j.install("workspace",running());j.transition(pause());
+        TimerJournal.Command resume=new TimerJournal.Command("two","timer",1,7000,TimerJournal.Action.RESUME);
+        assertEquals(TimerJournal.Result.APPLIED,j.transition(resume));
+        assertEquals(TimerJournal.Result.CONFLICT,j.install("workspace",running()));
+        assertEquals(TimerJournal.Result.CONFLICT,j.install("other",null));
+        assertEquals(TimerJournal.Result.CONFLICT,j.acknowledge("workspace","two",2));
+        assertEquals(TimerJournal.Result.CONFLICT,j.acknowledge("workspace","one",99));
+        assertEquals(TimerJournal.Result.APPLIED,j.acknowledge("workspace","one",1));
+        assertEquals(TimerJournal.Result.APPLIED,j.acknowledge("workspace","two",2));
+        assertEquals(TimerJournal.Result.CONFLICT,j.transition(pause()));
+        assertEquals(TimerJournal.Result.CONFLICT,j.install("workspace",running()));
+        assertEquals(TimerJournal.Result.CONFLICT,j.install("workspace",null));
+        assertEquals(TimerJournal.Result.CONFLICT,j.clear("workspace","timer",1));
+        assertEquals(TimerJournal.Result.APPLIED,j.clear("workspace","timer",2));
+        assertEquals(TimerJournal.Result.CONFLICT,j.transition(pause()));
+    }
+    @Test public void rejectsReusedIdClockRollbackAndBadTransitions() {
+        Store store=new Store();TimerJournal j=new TimerJournal(store,empty());j.install("workspace",running());
+        assertEquals(TimerJournal.Result.CONFLICT,j.transition(new TimerJournal.Command("x","timer",0,999,TimerJournal.Action.PAUSE)));
+        assertEquals(TimerJournal.Result.CONFLICT,j.transition(new TimerJournal.Command("x","timer",0,1500,TimerJournal.Action.RESUME)));
+        assertEquals(TimerJournal.Result.APPLIED,j.transition(pause()));
+        assertEquals(TimerJournal.Result.CONFLICT,j.transition(new TimerJournal.Command("one","timer",0,4600,TimerJournal.Action.PAUSE)));
+        assertEquals(TimerJournal.Result.CONFLICT,j.install("other",new TimerJournal.Timer("other",0,1,0,true)));
+    }
+}

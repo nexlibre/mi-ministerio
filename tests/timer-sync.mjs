@@ -1,0 +1,42 @@
+import ts from 'typescript';
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const load=async(path,replacements=[])=>{
+ let s=await fs.readFile(path,'utf8');
+ for(const [from,to] of replacements)s=s.replaceAll(from,to);
+ return 'data:text/javascript;base64,'+Buffer.from(ts.transpileModule(s,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText).toString('base64');
+};
+const model=await load('lib/ministerio/model.ts');
+const M=await import(model);
+const T=await import(await load('lib/ministerio/timer-sync.ts',[["'./model'",JSON.stringify(model)]]));
+const legacy={start:1000,elapsed:500,running:true,kind:'Casa en casa',date:'2026-01-01'};
+const timer=T.identifyTimer(legacy,()=> 'timer-a');
+assert.equal(timer.id,'timer-a');assert.equal(timer.revision,0);assert.equal(legacy.id,undefined);
+const pause={id:'command-1',timerId:'timer-a',expectedRevision:0,action:'pause',at:4500};
+const a=T.applyTimerCommand(timer,pause);assert.equal(a.status,'applied');assert.equal(a.timer.elapsed,4000);assert.equal(a.timer.running,false);assert.equal(a.timer.revision,1);
+assert.equal(T.applyTimerCommand(a.timer,pause).status,'duplicate');
+assert.equal(T.applyTimerCommand(a.timer,{...pause,at:4600}).reason,'command-id');
+assert.equal(T.applyTimerCommand(a.timer,{...pause,id:'other'}).reason,'revision');
+assert.equal(T.applyTimerCommand(a.timer,{...pause,id:'other',timerId:'other'}).reason,'timer');
+assert.equal(T.applyTimerCommand(a.timer,{...pause,id:'other',expectedRevision:1}).reason,'state');
+const resume={id:'command-2',timerId:'timer-a',expectedRevision:1,action:'resume',at:7000};
+const b=T.applyTimerCommand(a.timer,resume);assert.equal(b.status,'applied');assert.equal(b.timer.elapsed,4000);assert.equal(b.timer.revision,2);
+assert.equal(T.applyTimerCommand(b.timer,{...pause,id:'command-3',expectedRevision:2,at:6999}).reason,'clock');
+const c=T.applyTimerCommand(b.timer,{...pause,id:'command-3',expectedRevision:2,at:9000});assert.equal(c.timer.elapsed,6000);assert.equal(c.timer.revision,3);
+const state={...M.initial(),timer:c.timer};const item=M.record({minutes:1});
+assert.throws(()=>M.finishTimedActivity(state,'timer-a',item,1));
+const finished=M.finishTimedActivity(state,'timer-a',item,3);assert.equal(finished.timer,null);assert.equal(finished.activities.length,1);
+assert.throws(()=>M.finishTimedActivity(finished,'timer-a',item,3));
+assert.equal(T.applyTimerCommand({...c.timer,id:'timer-b'},pause).status,'conflict');
+// A durable acknowledgement will need the encrypted vault commit first. Check that
+// revisions and deduplication survive a simulated page reload, without real data.
+const fake=await import('fake-indexeddb');globalThis.indexedDB=new fake.IDBFactory();
+const V=await import(await load('lib/ministerio/vault.ts',[["'./model'",JSON.stringify(model)]]));
+const salt=V.salt(),key=await V.derive('temporary-test-password',salt);
+const encrypted=await V.seal({...M.initial(),timer:a.timer},key,salt);
+await V.writeCache({owner:'local:test',revision:0,dirty:true,payload:encrypted});
+const reloaded=await V.unseal((await V.readCache()).payload,key);
+assert.equal(T.applyTimerCommand(reloaded.timer,pause).status,'duplicate');
+assert.equal(T.applyTimerCommand(reloaded.timer,resume).status,'applied');
+assert.equal(T.applyTimerCommand(reloaded.timer,{...pause,id:'stale-command'}).status,'conflict');
+console.log('PASS: legacy timer identification, revisioned pause/resume, retries, conflicts, encrypted reload, stale finish, single record.');

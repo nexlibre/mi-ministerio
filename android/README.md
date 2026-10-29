@@ -32,3 +32,24 @@ mediante un WebView. La aplicación utiliza el mismo sitio y sus actualizaciones
 El almacenamiento offline y las cuentas conservan las limitaciones de la web.
 Prueba en un dispositivo real instalación, apertura, sesión, guardado y reapertura
 antes de considerar esta beta una versión estable.
+
+## Variante de firma de pruebas (no es una actualización)
+
+El parámetro `-PministerioTesting` genera el mismo contenedor TWA con el
+identificador `com.pablormlopez.miministerio.testing`. No actualiza la app
+original ni implica que el cronómetro flotante esté terminado. Para el
+artefacto sin firmar de esta variante: `bash gradlew assembleRelease
+-PministerioTesting`. Desde la raíz, `scripts/sign-testing-apk.sh` solo firma
+ese identificador y comprueba la firma y alineación. Requiere `ANDROID_HOME`,
+las herramientas Android y el almacén local de pruebas en `private-signing/`,
+que nunca debe subirse a Git.
+
+La verificación TWA y el puente necesitan Digital Asset Links publicados para
+el paquete de pruebas y su huella. Este cambio **no** los publica. Usar otro
+paquete o navegador puede afectar al acceso a datos; no desinstales la app
+original ni supongas que comparte el almacenamiento sin verificarlo.
+
+`assetlinks.testing.example.json` es solo una plantilla: sustituir el marcador
+por la huella verificada de la clave realmente usada y combinarlo con las
+relaciones existentes antes de cualquier publicación autorizada. La clave de
+prueba anterior se perdió del entorno y su huella no corresponde a claves nuevas.

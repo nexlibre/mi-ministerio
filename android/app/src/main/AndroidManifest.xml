@@ -30,6 +30,12 @@
 
     
 
+    <!-- Declared only; no permission is requested unless the future user action enables the overlay. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name="Application"
         android:allowBackup="true"
@@ -153,6 +159,16 @@
             
         </activity>
 
+        <!-- Entry is guarded by a one-shot token received over the validated TWA channel. -->
+        <activity android:name=".FloatingPermissionActivity" android:exported="true" android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="miministerio" android:host="floating-enable" />
+            </intent-filter>
+        </activity>
+
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
 
         <activity android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"
@@ -167,6 +183,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/filepaths" />
         </provider>
+
+        <!-- Browser connects this service to the validated Custom Tabs session. -->
+        <service android:name="androidx.browser.customtabs.PostMessageService" android:exported="true" />
+
+        <!-- Not exported and not yet reachable from the app: integration remains a draft. -->
+        <service android:name=".FloatingService" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled floating stopwatch" />
+        </service>
 
         <service
             android:name=".DelegationService"

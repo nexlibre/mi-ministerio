@@ -33,10 +33,21 @@ jobs:
           echo "ANDROID_SDK_ROOT=$sdk_dir" >> "$GITHUB_ENV"
       - name: Compilar APK sin firma de distribución
         working-directory: android
-        run: bash gradlew assembleRelease --no-daemon
+        run: bash gradlew testDebugUnitTest assembleRelease --no-daemon
+      - name: Compilar variante sin firmar para verificación de firma
+        working-directory: android
+        run: |
+          cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/original-unsigned.apk"
+          bash gradlew assembleRelease -PministerioTesting --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mi-ministerio-testing-sin-firmar
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: mi-ministerio-android-sin-firmar
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          path: ${{ runner.temp }}/original-unsigned.apk
           if-no-files-found: error
           retention-days: 14

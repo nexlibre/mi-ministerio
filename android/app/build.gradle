@@ -50,11 +50,14 @@ def twaManifest = [
     orientation: 'default',
 ]
 
+// The separately signed variant must never use the original package ID.
+def buildPackageId = project.hasProperty('ministerioTesting') ? 'com.pablormlopez.miministerio.testing' : twaManifest.applicationId
+
 android {
     compileSdkVersion 36
     namespace "com.pablormlopez.miministerio"
     defaultConfig {
-        applicationId "com.pablormlopez.miministerio"
+        applicationId buildPackageId
         minSdkVersion 23
         targetSdkVersion 36
         versionCode 1
@@ -117,7 +120,7 @@ android {
         resValue "color", "backgroundColor", twaManifest.backgroundColor
 
         // Defines a provider authority for the Splash Screen
-        resValue "string", "providerAuthority", twaManifest.applicationId + '.fileprovider'
+        resValue "string", "providerAuthority", buildPackageId + '.fileprovider'
 
         // The enableNotification resource is used to enable or disable the
         // TrustedWebActivityService, by changing the android:enabled and android:exported
@@ -199,6 +202,7 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+    testImplementation 'junit:junit:4.13.2'
     
         implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
     

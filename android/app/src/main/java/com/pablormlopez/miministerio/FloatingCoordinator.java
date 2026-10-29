@@ -1,0 +1,209 @@
+package com.pablormlopez.miministerio;
+
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+import java.io.IOException;
+import java.util.UUID;
+
+/** Process-local coordinator. The journal is the native command authority while
+ * the feature is enabled. No profile, notes or vault keys are stored here. */
+final class FloatingCoordinator {
+    interface Sender { boolean send(String message); }
+    interface Observer { void onTimerChanged(); void onAppearanceChanged(); }
+    private static FloatingCoordinator instance;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private final TimerJournal journal;
+    private final Context context;
+    private String activationToken;
+    private long activationExpires;
+    private Sender sender;
+    private Observer observer;
+    private boolean damaged, overlayVisible;
+
+    static synchronized FloatingCoordinator get(Context context) {
+        if(instance==null)instance=new FloatingCoordinator(context.getApplicationContext());
+        return instance;
+    }
+    private FloatingCoordinator(Context context) {
+        this.context=context;
+        TimerJournalStore store=new TimerJournalStore(context);
+        TimerJournal.State state;
+        try { state=store.load(); }
+        catch(IOException error) {
+            // Preserve the damaged file for recovery; do not overwrite or acknowledge it.
+            damaged=true;
+            state=new TimerJournal.State(null,null,java.util.Collections.emptyList());
+            Log.e("FloatingTimer", "Cannot read timer journal",error);
+        }
+        journal=new TimerJournal(store,state);
+    }
+    void setObserver(Observer value) { observer=value; notifyObserver(); }
+    void removeObserver(Observer value) { if(observer==value)observer=null; }
+    void setSender(Sender value) { sender=value; if(value==null)activationToken=null; }
+    boolean consumeActivation(String token) {
+        boolean valid=token!=null && token.equals(activationToken) && android.os.SystemClock.elapsedRealtime()<activationExpires;
+        activationToken=null;return valid;
+    }
+    void overlayShown() {
+        overlayVisible=true;
+        if(sender==null)return;
+        try {sender.send(new JSONObject().put("type","overlay-enabled").toString());} catch(JSONException ignored) { }
+    }
+    void overlayHidden() {
+        overlayVisible=false;
+        if(sender==null)return;
+        try {sender.send(new JSONObject().put("type","overlay-hidden").toString());} catch(JSONException ignored) { }
+    }
+    void activationResult(boolean enabled) {
+        if(sender==null)return;
+        try {sender.send(new JSONObject().put("type",enabled?"overlay-enabled":"overlay-denied").toString());}
+        catch(JSONException ignored) { }
+    }
+    TimerJournal.State snapshot() { return journal.snapshot(); }
+    boolean available() { return !damaged && journal.snapshot().workspace!=null && context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).getBoolean("enabled",false); }
+    private void notifyObserver() { if(observer!=null)main.post(observer::onTimerChanged); }
+
+    /** Persist first; then ask the web to reconcile. Failed writes never change the display. */
+    TimerJournal.Result toggle() {
+        if(!available())return TimerJournal.Result.CONFLICT;
+        TimerJournal.Timer t=journal.snapshot().timer;
+        long now=System.currentTimeMillis();
+        TimerJournal.Command c=t==null
+                ? new TimerJournal.Command(UUID.randomUUID().toString(),UUID.randomUUID().toString(),-1,now,TimerJournal.Action.START)
+                : new TimerJournal.Command(UUID.randomUUID().toString(),t.id,t.revision,now,t.running?TimerJournal.Action.PAUSE:TimerJournal.Action.RESUME);
+        TimerJournal.Result result=journal.transition(c);
+        if(result==TimerJournal.Result.APPLIED){notifyObserver();sendPending();}
+        return result;
+    }
+    void receive(String message) {
+        if(damaged || message==null || message.length()>4096)return;
+        try {
+            JSONObject input=new JSONObject(message);
+            String type=input.optString("type","");
+            if("web-ready".equals(type)) {
+                if(sender!=null)sender.send(new JSONObject().put("type","native-ready")
+                    .put("package",context.getPackageName())
+                    .put("enabled",context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).getBoolean("enabled",false))
+                    .put("visible",overlayVisible).toString());
+            } else if("arm-activation".equals(type)) {
+                String token=input.optString("token","");
+                if(!token.matches("[a-zA-Z0-9-]{16,128}"))return;
+                activationToken=token;activationExpires=android.os.SystemClock.elapsedRealtime()+120000;
+                if(sender!=null)sender.send(new JSONObject().put("type","activation-armed").put("token",token).toString());
+            } else if("request-pending".equals(type)) {
+                String requested=input.optString("workspace","");
+                if(requested.isEmpty() || requested.length()>128)return;
+                String existing=journal.snapshot().workspace;
+                if(existing==null)sendStatus("pending-drained",requested);
+                else if(existing.equals(requested)) {
+                    TimerJournal.State state=journal.snapshot();
+                    if(state.finishing && state.timer!=null)sendFinishLocked(state);
+                    else if(state.pending.isEmpty())sendStatus("pending-drained");else sendPending();
+                } else sendStatus("sync-conflict",requested);
+            } else if("timer-ack".equals(type)) {
+                String workspace=input.optString("workspace","");String id=input.optString("commandId","");
+                if(!input.has("revision"))return;
+                TimerJournal.Result result=journal.acknowledge(workspace,id,input.getLong("revision"));
+                if(result==TimerJournal.Result.APPLIED){notifyObserver();if(journal.snapshot().pending.isEmpty())sendStatus("pending-drained");else sendPending();}
+            } else if("timer-snapshot".equals(type)) {
+                String workspace=input.optString("workspace","");
+                String requestId=input.optString("requestId","");
+                if(workspace.isEmpty() || workspace.length()>128 || requestId.isEmpty() || requestId.length()>128)return;
+                if(!input.has("timer"))return;
+                TimerJournal.Timer timer=null;
+                if(!input.isNull("timer")) {
+                    JSONObject t=input.getJSONObject("timer");
+                    timer=new TimerJournal.Timer(t.getString("id"),t.getLong("revision"),t.getLong("start"),t.getLong("elapsed"),t.getBoolean("running"));
+                }
+                TimerJournal.Result result=journal.install(workspace,timer);
+                if(result==TimerJournal.Result.APPLIED || result==TimerJournal.Result.DUPLICATE) {
+                    notifyObserver();sendPending();
+                    if(sender!=null)sender.send(new JSONObject().put("type","sync-ready").put("workspace",workspace).put("requestId",requestId).toString());
+                } else sendStatus("sync-conflict");
+            } else if("configure-floating".equals(type)) {
+                if(!java.util.Objects.equals(journal.snapshot().workspace,input.optString("workspace")))return;
+                int style=Math.max(0,Math.min(3,input.optInt("style",0)));
+                int alpha=Math.max(80,Math.min(255,input.optInt("alpha",230)));
+                float scale=(float)Math.max(.75,Math.min(1.35,input.optDouble("scale",1)));
+                int active=input.optInt("activeColor",0xffe8c56a),paused=input.optInt("pausedColor",0xffc6d3d8);
+                android.content.SharedPreferences prefs=context.getSharedPreferences("floating-display",Context.MODE_PRIVATE);
+                if(prefs.getInt("style",0)==style && prefs.getInt("alpha",230)==alpha && prefs.getFloat("scale",1f)==scale
+                        && prefs.getInt("activeColor",0xffe8c56a)==active && prefs.getInt("pausedColor",0xffc6d3d8)==paused)return;
+                prefs.edit().putInt("style",style).putInt("alpha",alpha).putFloat("scale",scale)
+                        .putInt("activeColor",active).putInt("pausedColor",paused).apply();
+                if(observer!=null)main.post(observer::onAppearanceChanged);
+            } else if("disable-floating".equals(type)) {
+                String workspace=input.getString("workspace"),requestId=input.getString("requestId");
+                TimerJournal.State state=journal.snapshot();
+                boolean ok=workspace.equals(state.workspace) && !requestId.isEmpty() && requestId.length()<=128
+                        && state.timer==null && state.pending.isEmpty() && !state.finishing;
+                if(ok) {
+                    ok=context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).edit().putBoolean("enabled",false).commit();
+                    if(ok)context.stopService(new android.content.Intent(context,FloatingService.class));
+                }
+                if(sender!=null)sender.send(new JSONObject().put("type","disable-result").put("workspace",workspace)
+                        .put("requestId",requestId).put("result",ok?"applied":"conflict").toString());
+            // Do not expose a direct timer-clear message: discard must first
+            // freeze a paused timer and persist an encrypted terminal receipt,
+            // then acknowledge via end-finish. Clearing native first would lose
+            // the authoritative timer if the web write fails.
+            } else if("begin-finish".equals(type) || "end-finish".equals(type)) {
+                String workspace=input.getString("workspace"),timerId=input.getString("timerId"),requestId=input.getString("requestId");
+                if(requestId.isEmpty()||requestId.length()>128)return;
+                long revision=input.getLong("revision");
+                TimerJournal.Result result;
+                if("begin-finish".equals(type))result=journal.beginFinish(workspace,timerId,revision);
+                else {
+                    if(!input.has("committed"))return;
+                    result=journal.endFinish(workspace,timerId,revision,input.getBoolean("committed"));
+                }
+                if(result==TimerJournal.Result.APPLIED || result==TimerJournal.Result.DUPLICATE)notifyObserver();
+                if(sender!=null)sender.send(new JSONObject().put("type","finish-result").put("requestId",requestId)
+                        .put("workspace",workspace).put("timerId",timerId).put("revision",revision)
+                        .put("result",result.name().toLowerCase(java.util.Locale.ROOT)).toString());
+            } else if("web-command".equals(type)) {
+                if(journal.snapshot().workspace==null || !journal.snapshot().workspace.equals(input.optString("workspace")))return;
+                JSONObject raw=input.getJSONObject("command");
+                String action=raw.getString("action");
+                TimerJournal.Action selected;
+                if("start".equals(action))selected=TimerJournal.Action.START;
+                else if("pause".equals(action))selected=TimerJournal.Action.PAUSE;
+                else if("resume".equals(action))selected=TimerJournal.Action.RESUME;
+                else return;
+                TimerJournal.Command command=new TimerJournal.Command(raw.getString("id"),raw.getString("timerId"),
+                        raw.getLong("expectedRevision"),raw.getLong("at"),selected);
+                TimerJournal.Result result=journal.transition(command);
+                if(result==TimerJournal.Result.APPLIED || result==TimerJournal.Result.DUPLICATE){notifyObserver();sendPending();}
+                else sendStatus("sync-conflict");
+            }
+        } catch(JSONException | RuntimeException error) { Log.w("FloatingTimer", "Invalid bridge message"); }
+    }
+    private void sendPending() {
+        TimerJournal.State state=journal.snapshot();
+        if(sender==null || state.pending.isEmpty())return;
+        TimerJournal.Command c=state.pending.get(0);
+        try {
+            JSONObject command=new JSONObject().put("id",c.id).put("timerId",c.timerId)
+                    .put("expectedRevision",c.expectedRevision).put("at",c.at)
+                    .put("action",c.action==TimerJournal.Action.START?"start":c.action==TimerJournal.Action.PAUSE?"pause":"resume");
+            sender.send(new JSONObject().put("type","timer-command").put("workspace",state.workspace).put("command",command).toString());
+        } catch(JSONException ignored) { }
+    }
+    private void sendFinishLocked(TimerJournal.State state) {
+        if(sender==null || state.timer==null)return;
+        try { sender.send(new JSONObject().put("type","finish-locked").put("workspace",state.workspace)
+                .put("timerId",state.timer.id).put("revision",state.timer.revision).toString()); }
+        catch(JSONException ignored) { }
+    }
+    private void sendStatus(String type) { sendStatus(type,journal.snapshot().workspace); }
+    private void sendStatus(String type,String workspace) {
+        if(sender==null)return;
+        try { sender.send(new JSONObject().put("type",type).put("workspace",workspace).toString()); }
+        catch(JSONException ignored) { }
+    }
+}

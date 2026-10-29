@@ -3,3 +3,12 @@ dist/
 .env*
 *.tsbuildinfo
 .DS_Store
+
+# Local signing material: never commit
+/private-signing/
+
+# Local tool downloads
+/.cache/
+
+# Local signed test artifacts (never commit binaries)
+/artifacts/

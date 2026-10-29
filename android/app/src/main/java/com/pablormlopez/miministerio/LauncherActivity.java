@@ -43,6 +43,21 @@ public class LauncherActivity
     }
 
     @Override
+    protected com.google.androidbrowserhelper.trusted.TwaLauncher createTwaLauncher() {
+        // A channel is established without requesting permissions or starting
+        // the overlay. It is used only if the user explicitly enables the feature.
+        FloatingCoordinator coordinator = FloatingCoordinator.get(this);
+        final FloatingTwaLauncher[] launcher = new FloatingTwaLauncher[1];
+        launcher[0] = new FloatingTwaLauncher(this, new FloatingTwaLauncher.Listener() {
+            @Override public void onChannelState(boolean ready) {
+                coordinator.setSender(ready ? message -> launcher[0].send(message) : null);
+            }
+            @Override public void onMessage(String message) { coordinator.receive(message); }
+        });
+        return launcher[0];
+    }
+
+    @Override
     protected Uri getLaunchingUrl() {
         // Get the original launch Url.
         Uri uri = super.getLaunchingUrl();
