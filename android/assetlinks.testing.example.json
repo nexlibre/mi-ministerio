@@ -8,7 +8,7 @@
       "namespace": "android_app",
       "package_name": "com.pablormlopez.miministerio.testing",
       "sha256_cert_fingerprints": [
-        "DE:1A:17:64:A1:F8:A7:0B:5E:E0:FB:2B:ED:0A:25:80:37:A1:99:42:10:01:E3:C2:32:81:98:67:E5:51:02:1C"
+        "REEMPLAZAR_CON_HUELLA_SHA256_DEL_CERTIFICADO_DE_PRUEBAS"
       ]
     }
   }

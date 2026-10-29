@@ -96,6 +96,15 @@ solo aparece con paquete y token válidos y conexión preparada; no comprueban q
 Android lo abra ni que los controles sean usables en pantalla. El recibo de una
 finalización pendiente se conserva junto al registro cifrado y no puede ser
 reemplazado por otro; falta conectarlo con un protocolo completo de reintento.
+Hay además un recibo cifrado de descarte probado aisladamente para permitir un
+bloqueo/confirmación en dos fases sin borrar primero el diario nativo. La página
+no lo usa todavía. Las instantáneas que envía el puente esperan a la cola de
+escritura y exigen que el estado actual ya esté guardado; esto no resuelve todas
+las carreras con restauración ni sincronización remota.
+
+Se corrigió la recepción del puerto de Chrome: el evento `window.message`
+transfiere el puerto y el saludo llega después a ese puerto. Las pruebas con
+MessageChannel real verifican ese orden, pero no sustituyen Chrome en Android.
 
 No activar el prototipo hasta resolver y probar la serialización de cambios de
 la bóveda con los comandos del puente, recuperación después de perder un ACK,
@@ -114,6 +123,9 @@ integra la función. Servir Digital Asset Links en `/.well-known/assetlinks.json
 con las relaciones y huellas requeridas por la TWA y el canal postMessage, y
 verificar realmente el certificado de la APK y el archivo servido. El archivo
 `android/assetlinks.json` del repositorio no prueba el estado del sitio publicado.
+La consulta al archivo servido el 29 de octubre de 2026 encontró únicamente
+`common.handle_all_urls` para el paquete original: no incluye `common.use_as_origin`
+ni la variante `.testing`, por lo que no se puede dar por validado el puente.
 
 La firma original no está disponible. Una clave diferente no actualiza la app
 original del mismo paquete. Se creó una clave local nueva para el paquete

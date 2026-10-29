@@ -19,4 +19,18 @@ const salt=V.salt(),key=await V.derive('test-only-password',salt);state=initial;
 const result=await run({persist:async next=>{state=next;await V.writeCache({owner:'local:test',revision:0,dirty:true,payload:await V.seal(next,key,salt)});return true;}});
 assert.equal(result.status,'committed');const recovered=await V.unseal((await V.readCache()).payload,key);assert.equal(recovered.timer,null);assert.equal(recovered.activities.length,1);assert.equal(recovered.activities[0].timerId,'timer');assert.deepEqual(recovered.profile.floatingPendingFinish,{workspace:'w',timerId:'timer',revision:2});
 state=recovered;assert.equal((await run()).status,'committed');assert.equal(state.activities.length,1);
+// Discard is a terminal encrypted receipt, not an early native clear.
+const discard=(overrides={})=>F.commitFloatingDiscard({workspace:'w',timerId:'timer',revision:2,current:()=>state,persist,...overrides});
+state=initial;fail=true;assert.equal((await discard()).status,'storage-error');assert.equal(state.timer,null);assert.equal(state.activities.length,0);assert.equal(state.profile.floatingPendingFinish.discarded,true);
+fail=false;assert.equal((await discard()).status,'committed');assert.equal(state.activities.length,0);
+assert.equal((await run()).status,'conflict'); // A discarded timer cannot become an activity on replay.
+state=initial;assert.equal((await discard({revision:1})).status,'conflict');assert.equal(state.timer.id,'timer');
+state={...initial,profile:{...initial.profile,floatingPendingFinish:{workspace:'w',timerId:'timer',revision:2}}};assert.equal((await discard()).status,'conflict');
+state=initial;assert.equal((await discard({persist:async next=>{state={...next,profile:{...next.profile,name:'other edit'}};return true;}})).status,'conflict');
+state=initial;assert.equal((await discard({persist:async next=>{state=null;return true;}})).status,'locked');
+state={...initial,timer:{...initial.timer,running:true}};assert.equal((await discard()).status,'conflict');
+state={...initial,activities:[{...item,timerId:'timer'}]};assert.equal((await discard()).status,'conflict');
+state=initial;assert.equal((await discard({persist:async next=>{state=next;await V.writeCache({owner:'local:test',revision:0,dirty:true,payload:await V.seal(next,key,salt)});return true;}})).status,'committed');
+state=await V.unseal((await V.readCache()).payload,key);assert.equal(state.timer,null);assert.deepEqual(state.profile.floatingPendingFinish,{workspace:'w',timerId:'timer',revision:2,discarded:true});
+assert.equal((await discard()).status,'committed');assert.equal(state.activities.length,0);
 console.log('PASS: floating finish is saved once, retried safely, and committed in encrypted IndexedDB before acknowledgement.');

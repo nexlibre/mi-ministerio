@@ -48,3 +48,8 @@ La verificación TWA y el puente necesitan Digital Asset Links publicados para
 el paquete de pruebas y su huella. Este cambio **no** los publica. Usar otro
 paquete o navegador puede afectar al acceso a datos; no desinstales la app
 original ni supongas que comparte el almacenamiento sin verificarlo.
+
+`assetlinks.testing.example.json` es solo una plantilla: sustituir el marcador
+por la huella verificada de la clave realmente usada y combinarlo con las
+relaciones existentes antes de cualquier publicación autorizada. La clave de
+prueba anterior se perdió del entorno y su huella no corresponde a claves nuevas.
