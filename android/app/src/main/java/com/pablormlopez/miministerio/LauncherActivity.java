@@ -43,6 +43,23 @@ public class LauncherActivity
     }
 
     @Override
+    protected com.google.androidbrowserhelper.trusted.TwaLauncher createTwaLauncher() {
+        // The existing launcher remains unchanged until the user explicitly
+        // enables the floating feature. The experimental channel is opt-in.
+        if (!getSharedPreferences("floating-display", MODE_PRIVATE).getBoolean("enabled", false))
+            return super.createTwaLauncher();
+        FloatingCoordinator coordinator = FloatingCoordinator.get(this);
+        final FloatingTwaLauncher[] launcher = new FloatingTwaLauncher[1];
+        launcher[0] = new FloatingTwaLauncher(this, new FloatingTwaLauncher.Listener() {
+            @Override public void onChannelState(boolean ready) {
+                coordinator.setSender(ready ? message -> launcher[0].send(message) : null);
+            }
+            @Override public void onMessage(String message) { coordinator.receive(message); }
+        });
+        return launcher[0];
+    }
+
+    @Override
     protected Uri getLaunchingUrl() {
         // Get the original launch Url.
         Uri uri = super.getLaunchingUrl();
