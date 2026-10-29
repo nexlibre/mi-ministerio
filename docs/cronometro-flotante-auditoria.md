@@ -35,10 +35,16 @@ no está conectada ni accesible desde la aplicación.
 - `floating-bridge.ts` es un transporte web aislado y probado con puertos
   simulados, pero no se instancia en la aplicación ni existe todavía el extremo
   Android. La prueba simulada no demuestra una conexión real con Chrome.
+- `FloatingTwaLauncher` es una implementación experimental de una sesión
+  compartida para la TWA y postMessage. No sustituye al launcher existente ni
+  está activada. Requiere revisar navegación, reconexión, política de segundo
+  plano y Digital Asset Links en un navegador y dispositivo reales.
 - `FloatingService` contiene una ventana compacta no exportada y todavía no
   accesible; no controla ningún cronómetro. El arrastre y los límites son código
   preliminar que requiere pruebas en teléfonos y distintas versiones Android.
   No se solicita ningún permiso ni se arranca el servicio desde la interfaz.
+  `OverlayPositionTest` comprueba límites y coordenadas relativas, no los
+  gestos reales ni los insets de dispositivos Android.
 
 ## Diseño pendiente antes de implementar
 

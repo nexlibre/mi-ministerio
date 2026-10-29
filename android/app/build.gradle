@@ -199,6 +199,7 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+    testImplementation 'junit:junit:4.13.2'
     
         implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.6.2'
     

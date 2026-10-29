@@ -173,27 +173,23 @@ public final class FloatingService extends Service {
     private void restorePosition() {
         if (root == null || params == null || !root.isAttachedToWindow()) return;
         Rect b = usableBounds();
-        int maxX = Math.max(b.left, b.right - root.getWidth());
-        int maxY = Math.max(b.top, b.bottom - root.getHeight());
-        float x = Math.max(0, Math.min(1, preferences.getFloat("x", .85f)));
-        float y = Math.max(0, Math.min(1, preferences.getFloat("y", .25f)));
-        updatePosition(b.left + Math.round((maxX - b.left) * x), b.top + Math.round((maxY - b.top) * y));
+        updatePosition(OverlayPosition.fromFraction(preferences.getFloat("x", .85f), b.left, b.right, root.getWidth()),
+                OverlayPosition.fromFraction(preferences.getFloat("y", .25f), b.top, b.bottom, root.getHeight()));
     }
 
     private void updatePosition(int x, int y) {
         if (root == null || params == null || !root.isAttachedToWindow()) return;
         Rect b = usableBounds();
-        params.x = Math.max(b.left, Math.min(Math.max(b.left, b.right - root.getWidth()), x));
-        params.y = Math.max(b.top, Math.min(Math.max(b.top, b.bottom - root.getHeight()), y));
+        params.x = OverlayPosition.clamp(x, b.left, b.right, root.getWidth());
+        params.y = OverlayPosition.clamp(y, b.top, b.bottom, root.getHeight());
         try { windows.updateViewLayout(root, params); } catch (IllegalArgumentException ignored) { }
     }
 
     private void rememberPosition() {
         if (root == null || params == null) return;
         Rect b = usableBounds();
-        int w = Math.max(0, b.width() - root.getWidth()), h = Math.max(0, b.height() - root.getHeight());
-        preferences.edit().putFloat("x", w == 0 ? 0 : (float)(params.x - b.left) / w)
-                .putFloat("y", h == 0 ? 0 : (float)(params.y - b.top) / h).apply();
+        preferences.edit().putFloat("x", OverlayPosition.fraction(params.x, b.left, b.right, root.getWidth()))
+                .putFloat("y", OverlayPosition.fraction(params.y, b.top, b.bottom, root.getHeight())).apply();
     }
 
     @Override public void onConfigurationChanged(Configuration config) {
