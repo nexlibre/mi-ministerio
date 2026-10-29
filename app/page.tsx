@@ -12,7 +12,7 @@ import {createFloatingBridge} from '@/lib/ministerio/floating-bridge';
 import {reconcileFloatingCommand} from '@/lib/ministerio/floating-reconcile';
 import {floatingSnapshot} from '@/lib/ministerio/floating-snapshot';
 import {commitFloatingFinish,commitFloatingDiscard} from '@/lib/ministerio/floating-finish';
-import {FloatingSettings,defaultFloatingOptions,type FloatingOptions} from '@/components/ministerio/floating-settings';
+import {FloatingSettings,normalizeFloatingOptions,type FloatingOptions} from '@/components/ministerio/floating-settings';
 import {Cache,Envelope,derive,salt,seal,unseal,readCache,writeCache,remote,push,readDeviceAccess,writeDeviceAccess,matchesDeviceAccess,openWorkspace,isLocalOwner} from '@/lib/ministerio/vault';
 type Field={name:string;label:string;type?:string;options?:string[]|{value:string,label:string}[];required?:boolean;value?:any;min?:number;max?:number;hint?:string};
 type Modal={title:string;description?:string;fields:Field[];submit:(v:any)=>void|Promise<void|boolean>;initial?:any;onCancel?:()=>void};
@@ -49,7 +49,7 @@ export default function App(){
  }
  const [state,setState]=useState<State|null>(null),[cache,setCache]=useState<Cache|null>(null),[ready,setReady]=useState(false),[loading,setLoading]=useState(false),[tab,setTab]=useState('Inicio'),[section,setSection]=useState(''),[month,setMonth]=useState(monthNow()),[selectedDay,setSelectedDay]=useState(today()),[query,setQuery]=useState(''),[filter,setFilter]=useState('Todas'),[modal,setModal]=useState<Modal|null>(null),[detail,setDetail]=useState<string|null>(null),[toast,setToast]=useState(''),[sync,setSync]=useState('Guardado local'),[conflict,setConflict]=useState(false),[tick,setTick]=useState(Date.now()),[online,setOnline]=useState(true),[report,setReport]=useState<RecordItem|null>(null),[reportText,setReportText]=useState(''),[viewWeek,setViewWeek]=useState(false);
  const current=useRef<State|null>(null),cached=useRef<Cache|null>(null),key=useRef<CryptoKey|null>(null),saltRef=useRef(''),owner=useRef(''),queue=useRef(Promise.resolve()),lastAction=useRef(Date.now()),localConflict=useRef(false);
- const floatingBridge=useRef<ReturnType<typeof createFloatingBridge>|null>(null),floatingQueue=useRef(Promise.resolve()),floatingGeneration=useRef(0),durableState=useRef<State|null>(null);
+ const floatingBridge=useRef<ReturnType<typeof createFloatingBridge>|null>(null),floatingQueue=useRef(Promise.resolve()),floatingGeneration=useRef(0),durableState=useRef<State|null>(null),floatingSnapshotRequest=useRef<string|null>(null);
  type FloatingStatus={connected:boolean;ready:boolean;busy:boolean;visible:boolean;armed:boolean;packageName:string;token:string};
  type FloatingLock={workspace:string;timerId:string;revision:number};
  type FloatingRequest=FloatingLock&{kind:'begin-finish'|'begin-discard'|'end'|'cancel'|'disable'};
@@ -72,7 +72,7 @@ export default function App(){
   const requestId=crypto.randomUUID(),lock={workspace,timerId:t.id,revision:t.revision??0};
   trackFloating(requestId,{...lock,kind:action==='finish'?'begin-finish':'begin-discard'});
   if(!floatingSend({type:'begin-finish',...lock,requestId})){floatingRequests.current.delete(requestId);notify('El cronómetro está desconectado.');return;}
-  setFloatingStatus({ready:false,busy:true});
+  floatingSnapshotRequest.current=null;setFloatingStatus({ready:false,busy:true});
  }
  function floatingCommand(action:'start'|'pause'|'resume'){
   const s=current.current,t=s?.timer,workspace=s?.profile.floatingWorkspaceId;
@@ -80,7 +80,7 @@ export default function App(){
   if(action==='start'?!!t:!t?.id)return false;
   const command={id:crypto.randomUUID(),timerId:t?.id||crypto.randomUUID(),expectedRevision:t?.revision??-1,at:Date.now(),action};
   if(!floatingSend({type:'web-command',workspace,command})){notify('El cronómetro está desconectado.');return false;}
-  setFloatingStatus({ready:false});return true;
+  floatingSnapshotRequest.current=null;setFloatingStatus({ready:false});return true;
  }
  async function prepareFloating(){
   const s=current.current;if(!s||demo.current||!floatingStatus.current.connected)return;
@@ -95,7 +95,7 @@ export default function App(){
   if(s.timer||s.profile.floatingPendingFinish){notify('Finaliza o cancela la actividad antes de desactivar el flotante.');return;}
   const requestId=crypto.randomUUID();trackFloating(requestId,{kind:'disable',workspace,timerId:'',revision:0});
   if(!floatingSend({type:'disable-floating',workspace,requestId})){floatingRequests.current.delete(requestId);notify('No se pudo desactivar el flotante.');return;}
-  setFloatingStatus({busy:true,ready:false});
+  floatingSnapshotRequest.current=null;setFloatingStatus({busy:true,ready:false});
  }
  async function changeFloatingOptions(options:FloatingOptions){
   const s=current.current;if(!s)return;const next:State={...s,profile:{...s.profile,floatingOptions:options}};
@@ -124,20 +124,21 @@ export default function App(){
  // The native journal is authoritative whenever the user has enabled floating.
  useEffect(()=>{
   if(location.origin!=='https://mi-ministerio-pablo.pablormlopez.chatgpt.site')return;
+  const armActivation=()=>{if(!bridge.connected)return;const token=crypto.randomUUID();setFloatingStatus({token,armed:false});bridge.send({type:'arm-activation',token});};
   const bridge=createFloatingBridge({target:window,origin:location.origin,onConnectionChange:connected=>{
-   floatingGeneration.current++;floatingRequests.current.clear();floatingLock.current=null;
+   floatingGeneration.current++;floatingSnapshotRequest.current=null;floatingRequests.current.clear();floatingLock.current=null;
    setFloatingStatus({connected,ready:false,busy:false,visible:false,armed:false});
    if(connected){bridge.send({type:'web-ready'});const s=current.current;if(s?.profile.floatingWorkspaceId)bridge.send({type:'request-pending',workspace:s.profile.floatingWorkspaceId});}
   },onMessage:message=>{
    if(message.type==='native-ready'){
     const pkg=message.package;if(pkg!=='com.pablormlopez.miministerio'&&pkg!=='com.pablormlopez.miministerio.testing')return;
-    const token=crypto.randomUUID();setFloatingStatus({packageName:pkg,token,armed:false,visible:!!message.visible});bridge.send({type:'arm-activation',token});return;
+    setFloatingStatus({packageName:pkg,visible:!!message.visible});armActivation();return;
    }
    if(message.type==='activation-armed'&&message.token===floatingStatus.current.token){setFloatingStatus({armed:true});return;}
    if(message.type==='overlay-hidden'||message.type==='overlay-denied'||message.type==='overlay-enabled'){
     setFloatingStatus({visible:message.type==='overlay-enabled',busy:false});
     if(message.type==='overlay-denied')notify('No se concedió el permiso de ventana flotante.');
-    const token=crypto.randomUUID();setFloatingStatus({token,armed:false});bridge.send({type:'arm-activation',token});return;
+    armActivation();return;
    }
    if(typeof message.workspace!=='string')return;
    const generation=floatingGeneration.current,workspace=message.workspace;
@@ -159,12 +160,17 @@ export default function App(){
       }
       return;
      }
-     const snapshot=floatingSnapshot(s,durableState.current,workspace);if(snapshot)bridge.send(snapshot);
+     const snapshot=floatingSnapshot(s,durableState.current,workspace);
+     if(snapshot){const requestId=crypto.randomUUID();floatingSnapshotRequest.current=requestId;if(!bridge.send({...snapshot,requestId}))floatingSnapshotRequest.current=null;}
     }).catch(()=>{});return;
    }
    if(message.type==='sync-ready'){
-    floatingQueue.current=floatingQueue.current.then(()=>{if(generation!==floatingGeneration.current||floatingLock.current||floatingRequests.current.size||current.current?.profile.floatingPendingFinish)return;setFloatingStatus({ready:true,busy:false});
-     const profile=current.current?.profile;if(profile?.floatingWorkspaceId){const options={...defaultFloatingOptions,...profile.floatingOptions};bridge.send({type:'configure-floating',workspace:profile.floatingWorkspaceId,...options,activeColor:0xff000000|parseInt(options.activeColor.slice(1),16),pausedColor:0xff000000|parseInt(options.pausedColor.slice(1),16)});}
+    const requestId=message.requestId;
+    floatingQueue.current=floatingQueue.current.then(()=>{if(typeof requestId!=='string'||requestId!==floatingSnapshotRequest.current||generation!==floatingGeneration.current||floatingLock.current||floatingRequests.current.size||current.current?.profile.floatingPendingFinish)return;
+     const actionPending=floatingAfterPause.current,active=current.current;
+     if(actionPending&&(!active?.timer||active.timer.running||active!==durableState.current))return;
+     floatingSnapshotRequest.current=null;setFloatingStatus({ready:true,busy:false});
+     const profile=current.current?.profile;if(profile?.floatingWorkspaceId){const options=normalizeFloatingOptions(profile.floatingOptions);bridge.send({type:'configure-floating',workspace:profile.floatingWorkspaceId,...options,activeColor:0xff000000|parseInt(options.activeColor.slice(1),16),pausedColor:0xff000000|parseInt(options.pausedColor.slice(1),16)});}
      const action=floatingAfterPause.current;if(action){floatingAfterPause.current=null;floatingBegin(action);}});return;
    }
    if(message.type==='sync-conflict'||message.type==='timer-rejected'){setFloatingStatus({ready:false,busy:false});notify('El cronómetro necesita sincronizarse antes de continuar.');return;}
@@ -198,7 +204,7 @@ export default function App(){
     }).catch(()=>setFloatingStatus({busy:false,ready:false}));return;
    }
    if(message.type!=='timer-command')return;
-   setFloatingStatus({ready:false});const command=message.command;
+   floatingSnapshotRequest.current=null;setFloatingStatus({ready:false});const command=message.command;
    floatingQueue.current=floatingQueue.current.then(async()=>{
     const result=await reconcileFloatingCommand({workspace,command,current:()=>current.current,persist:change});
     if(generation!==floatingGeneration.current)return;
@@ -207,13 +213,16 @@ export default function App(){
    }).catch(()=>{});
   }});
   floatingBridge.current=bridge;
-  const refresh=()=>{if(!document.hidden){const s=current.current;if(s?.profile.floatingWorkspaceId)bridge.send({type:'request-pending',workspace:s.profile.floatingWorkspaceId});}};
+  const refresh=()=>{if(!document.hidden){armActivation();const s=current.current;if(s?.profile.floatingWorkspaceId)bridge.send({type:'request-pending',workspace:s.profile.floatingWorkspaceId});}};
+  // Native activation tokens expire after two minutes. Renew while visible,
+  // and on foregrounding after browser timer throttling.
+  const rearm=setInterval(()=>{if(!document.hidden)armActivation();},60000);
   document.addEventListener('visibilitychange',refresh);
-  return()=>{document.removeEventListener('visibilitychange',refresh);floatingBridge.current=null;bridge.dispose();};
+  return()=>{clearInterval(rearm);document.removeEventListener('visibilitychange',refresh);floatingBridge.current=null;bridge.dispose();};
  },[]);
  useEffect(()=>{
   const bridge=floatingBridge.current,workspace=state?.profile.floatingWorkspaceId;
-  if(bridge?.connected&&workspace){bridge.send({type:'request-pending',workspace});const options={...defaultFloatingOptions,...state?.profile.floatingOptions};bridge.send({type:'configure-floating',workspace,...options,activeColor:0xff000000|parseInt(options.activeColor.slice(1),16),pausedColor:0xff000000|parseInt(options.pausedColor.slice(1),16)});}
+  if(bridge?.connected&&workspace){bridge.send({type:'request-pending',workspace});const options=normalizeFloatingOptions(state?.profile.floatingOptions);bridge.send({type:'configure-floating',workspace,...options,activeColor:0xff000000|parseInt(options.activeColor.slice(1),16),pausedColor:0xff000000|parseInt(options.pausedColor.slice(1),16)});}
  },[state]);
  useEffect(()=>{
   if(!state?.profile.floatingEnabled||!state.profile.floatingWorkspaceId)return;
@@ -276,7 +285,7 @@ export default function App(){
  {s.profile.showReading&&<section className="reading-strip"><BookOpen/><div><b>{t('message_114')}</b><p>{s.reading.book}{t('message_115')}{s.reading.chapter}{t('message_109')}{s.reading.daily}{t('message_116')}</p></div><button className="secondary" onClick={()=>go('Perfil','Lectura')}>{t('message_117')}</button></section>}
  <section className="card"><div className="section-title"><h2>{t('message_118')}</h2><button className="text-button" onClick={()=>go('Actividad')}>{t('message_119')}</button></div>{m.activities.length?m.activities.slice(-3).reverse().map(a=><div className="list-row" key={a.id}><span className="row-icon"><Clock3/></span><div><b>{a.kind}</b><small>{pretty(a.date)}{t('message_109')}{a.reportable?'Informable':'Registro personal'}</small></div>{pioneer&&<b>{duration(a.minutes)}</b>}</div>):<p className="muted padded">{t('message_120')}</p>}</section></>}
  {tab==='Actividad'&&<>{(pioneer||s.profile.floatingEnabled)&&<section className="timer-card card"><div><span className="eyebrow">{t('message_121')}</span><div className="timer">{timer?new Date(elapsed(timer,tick)).toISOString().slice(11,19):'00:00:00'}</div><span className="muted">{timer?timer.running?'En curso · puedes bloquear tu pantalla':'En pausa':'Listo cuando tú lo estés'}</span>{timer&&elapsed(timer,tick)>14400000&&<p className="notice">{t('message_122')}</p>}</div><div className="button-row">{!timer?<button className="primary" disabled={!!s.profile.floatingEnabled&&(!floating.ready||floating.busy)} onClick={startTimer}><Play size={18}/>{t('message_123')}</button>:<><button className="secondary" disabled={!!s.profile.floatingEnabled&&(!floating.ready||floating.busy)} onClick={()=>{const currentTimer=current.current?.timer;if(currentTimer)transitionTimer(currentTimer.running?'pause':'resume');}}>{timer.running?<Pause size={18}/>:<Play size={18}/>} {timer.running?'Pausar':'Reanudar'}</button><button className="primary" disabled={!!s.profile.floatingEnabled&&(!floating.ready||floating.busy)} onClick={()=>{const active=current.current;if(!active?.timer)return;if(active.profile.floatingEnabled){if(!floatingStatus.current.ready){notify('Espera a que el cronómetro se sincronice.');return;}if(active.timer.running){floatingAfterPause.current='finish';if(!floatingCommand('pause'))floatingAfterPause.current=null;}else floatingBegin('finish');return;}let stopped=active.timer;if(stopped.running){const paused=transitionTimer('pause');if(!paused)return;stopped=paused;}else if(!stopped.id){stopped=identifyTimer(stopped);change({...active,timer:stopped});}activityForm(undefined,Math.floor(stopped.elapsed/60000),true);}}><Square size={16}/>{t('message_124')}</button><button className="text-button" disabled={!!s.profile.floatingEnabled&&(!floating.ready||floating.busy)} onClick={()=>{const active=current.current;if(!active?.timer||!confirm(t('message_125')))return;if(active.profile.floatingEnabled){if(!floatingStatus.current.ready){notify('Espera a que el cronómetro se sincronice.');return;}if(active.timer.running){floatingAfterPause.current='discard';if(!floatingCommand('pause'))floatingAfterPause.current=null;}else floatingBegin('discard');}else change({...active,timer:null});}}>{t('message_126')}</button></>}</div></section>}
- <FloatingSettings options={{...defaultFloatingOptions,...s.profile.floatingOptions}} enabled={!!s.profile.floatingEnabled} visible={floating.visible} connected={floating.connected&&!demo.current} ready={floating.ready} prepared={false} packageName={floating.packageName} token={floating.token} armed={floating.armed} busy={floating.busy} onPrepare={()=>void prepareFloating()} onDisable={disableFloating} onOptions={options=>void changeFloatingOptions(options)}/>
+ <FloatingSettings options={normalizeFloatingOptions(s.profile.floatingOptions)} enabled={!!s.profile.floatingEnabled} visible={floating.visible} connected={floating.connected&&!demo.current} ready={floating.ready} prepared={false} packageName={floating.packageName} token={floating.token} armed={floating.armed} busy={floating.busy} onPrepare={()=>void prepareFloating()} onDisable={disableFloating} onOptions={options=>void changeFloatingOptions(options)}/>
  <div className="toolbar"><label className="search"><Search size={19}/><input placeholder={t('message_127')} value={query} onChange={e=>setQuery(e.target.value)}/></label><select aria-label={t('message_128')} value={filter} onChange={e=>setFilter(e.target.value)}>{['Todas',...kinds].map(x=><option key={x}>{x}</option>)}</select><button className="primary" onClick={()=>activityForm()}><Plus size={18}/>{t('message_129')}</button></div><section className="card">{m.activities.filter(search).filter(x=>filter==='Todas'||x.kind===filter).length?m.activities.filter(search).filter(x=>filter==='Todas'||x.kind===filter).sort((a,b)=>b.date.localeCompare(a.date)).map(a=><div className="list-row wrap" key={a.id}><span className="row-icon"><Clock3/></span><div className="grow"><b>{a.kind}</b><small>{pretty(a.date)} {a.time}{t('message_109')}{a.reportable?'Informable':'Personal'}{a.person?' · '+(s.people.find(x=>x.id===a.person)?.name||'Persona eliminada'):''}</small>{a.notes&&<p>{a.notes}</p>}</div>{pioneer&&<strong>{duration(a.minutes)}</strong>}<button className="text-button" onClick={()=>activityForm(a)}>{t('message_130')}</button><button className="icon" aria-label={t('message_131')} onClick={()=>{const {timerId,...copy}=a;activityForm({...copy,id:crypto.randomUUID(),date:today()});}}><Copy size={17}/></button><button className="icon danger" aria-label={t('message_132')} onClick={()=>remove('activities',a.id)}><Trash2 size={17}/></button></div>):<Empty icon={Clock3} title="Un mes por registrar" text="Añade una actividad manualmente o usa el cronómetro." action={()=>activityForm()} label="Registrar actividad"/>}</section></>}
  {tab==='Personas'&&!person&&<><div className="toolbar"><label className="search"><Search size={19}/><input placeholder={t('message_133')} value={query} onChange={e=>setQuery(e.target.value)}/></label><button className="primary" onClick={()=>personForm()}><Plus size={18}/>{t('message_104')}</button></div><div className="tabs">{['Todas','Estudio bíblico','Revisita','Pendiente','Archivada'].map(x=><button className={filter===x?'selected':''} onClick={()=>setFilter(x)} key={x}>{x==='Estudio bíblico'?'Estudios':x}</button>)}</div><div className="people-grid">{s.people.filter(search).filter(x=>filter==='Todas'?x.status!=='Archivada':x.status===filter).map(p=><button className="person-card card" key={p.id} onClick={()=>setDetail(p.id)}><div className="person-top"><span className="person-avatar">{p.name.slice(0,2).toUpperCase()}</span><span className="badge">{p.status}</span></div><h2>{p.name}</h2><p><MapPin size={15}/>{p.address||'Sin dirección'}</p><div className="person-footer">{p.next?'Próxima visita · '+pretty(p.next):'Sin visita programada'}<ChevronRight size={17}/></div></button>)}</div>{!s.people.filter(search).filter(x=>filter==='Todas'?x.status!=='Archivada':x.status===filter).length&&<section className="card"><Empty icon={Users} title="Cada persona tiene una historia" text="Guarda lo importante para tu próxima conversación." action={()=>personForm()} label="Añadir persona"/></section>}</>}
  {tab==='Personas'&&person&&<><button className="text-button back" onClick={()=>setDetail(null)}><ChevronLeft size={18}/>{t('message_134')}</button><section className="card person-detail"><div className="section-title"><div><span className="badge">{person.status}</span><h2>{person.name}</h2></div><button className="secondary" onClick={()=>personForm(person)}>{t('message_135')}</button></div><div className="two-col"><div><p>{person.phone||'Sin teléfono'}</p><p>{person.address||'Sin dirección'}</p><p>{person.notes}</p><div className="button-row"><button className="secondary" onClick={()=>locate(person)}><MapPin size={16}/>{t('message_136')}</button>{(person.location||person.address)&&<a className="secondary" target="_blank" rel="noreferrer" href={'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(person.location||person.address)}>{t('message_137')}<ArrowUpRight size={16}/></a>}</div></div><div className="soft"><small>{t('message_138')}</small><h3>{person.last?pretty(person.last):'Aún sin registrar'}</h3><small>{t('message_139')}</small><h3>{person.next?pretty(person.next)+' · '+person.next.slice(11,16):'Por programar'}</h3></div></div></section><section className="card"><div className="section-title"><h2>{t('message_140')}</h2><button className="primary" onClick={()=>conversationForm(person)}><Plus size={17}/>{t('message_129')}</button></div>{s.conversations.filter(x=>x.person===person.id).sort((a,b)=>b.date.localeCompare(a.date)).map(c=><article className="conversation" key={c.id}><span className="badge">{pretty(c.date)}{t('message_109')}{c.kind}</span><h3>{c.topic}</h3>{[['Texto',c.text],['Referencia',c.reference],['Le interesó',c.interest],['Próximo tema',c.nextTopic],['Notas',c.notes]].filter(x=>x[1]).map(([k,v])=><p key={k}><b>{k}{t('message_141')}</b> {v}</p>)}</article>)}{!s.conversations.some(x=>x.person===person.id)&&<p className="muted padded">{t('message_142')}</p>}</section><button className="text-button danger" onClick={()=>{remove('people',person.id);setDetail(null);}}>{t('message_143')}</button></>}

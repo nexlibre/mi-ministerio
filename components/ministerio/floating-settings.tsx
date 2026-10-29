@@ -2,6 +2,16 @@
 
 export type FloatingOptions={style:number;alpha:number;scale:number;activeColor:string;pausedColor:string};
 export const defaultFloatingOptions:FloatingOptions={style:0,alpha:230,scale:1,activeColor:'#e8c56a',pausedColor:'#c6d3d8'};
+// Backups can contain older or malformed settings; never let them crash the
+// Activity screen or produce out-of-range native window parameters.
+export function normalizeFloatingOptions(value:unknown):FloatingOptions {
+ const raw=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
+ const number=(key:string,fallback:number,min:number,max:number,integer=false)=>{
+  const n=raw[key];return typeof n==='number'&&Number.isFinite(n)?Math.max(min,Math.min(max,integer?Math.round(n):n)):fallback;
+ };
+ const color=(key:string,fallback:string)=>typeof raw[key]==='string'&&/^#[0-9a-f]{6}$/i.test(raw[key] as string)?raw[key] as string:fallback;
+ return {style:number('style',defaultFloatingOptions.style,0,3,true),alpha:number('alpha',defaultFloatingOptions.alpha,80,255,true),scale:number('scale',defaultFloatingOptions.scale,.75,1.35),activeColor:color('activeColor',defaultFloatingOptions.activeColor),pausedColor:color('pausedColor',defaultFloatingOptions.pausedColor)};
+}
 type Props={options:FloatingOptions;enabled:boolean;visible:boolean;connected:boolean;ready:boolean;prepared:boolean;packageName:string;token:string;armed:boolean;busy:boolean;
  onPrepare:()=>void;onDisable:()=>void;onOptions:(options:FloatingOptions)=>void;};
 export function FloatingSettings(p:Props){

@@ -112,7 +112,8 @@ final class FloatingCoordinator {
                 if(result==TimerJournal.Result.APPLIED){notifyObserver();if(journal.snapshot().pending.isEmpty())sendStatus("pending-drained");else sendPending();}
             } else if("timer-snapshot".equals(type)) {
                 String workspace=input.optString("workspace","");
-                if(workspace.isEmpty() || workspace.length()>128)return;
+                String requestId=input.optString("requestId","");
+                if(workspace.isEmpty() || workspace.length()>128 || requestId.isEmpty() || requestId.length()>128)return;
                 if(!input.has("timer"))return;
                 TimerJournal.Timer timer=null;
                 if(!input.isNull("timer")) {
@@ -121,7 +122,8 @@ final class FloatingCoordinator {
                 }
                 TimerJournal.Result result=journal.install(workspace,timer);
                 if(result==TimerJournal.Result.APPLIED || result==TimerJournal.Result.DUPLICATE) {
-                    notifyObserver();sendPending();sendStatus("sync-ready");
+                    notifyObserver();sendPending();
+                    if(sender!=null)sender.send(new JSONObject().put("type","sync-ready").put("workspace",workspace).put("requestId",requestId).toString());
                 } else sendStatus("sync-conflict");
             } else if("configure-floating".equals(type)) {
                 if(!java.util.Objects.equals(journal.snapshot().workspace,input.optString("workspace")))return;

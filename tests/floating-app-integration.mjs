@@ -27,7 +27,7 @@ try {
  if(process.env.FLOATING_PASSWORD_MODE==='1')click(document.querySelector('.unlock input[type=checkbox]'));
  document.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
  await wait(()=>button('Actividad'),'unlock');
- const channel=new MessageChannel();({port1,port2}=channel);let workspace=null,timer=null,pending=null,finishing=false,lastFinished=null,endCalls=0;
+ const channel=new MessageChannel();({port1,port2}=channel);let workspace=null,timer=null,pending=null,finishing=false,lastFinished=null,endCalls=0,lastSnapshotId=null;
  const send=msg=>port1.postMessage(JSON.stringify(msg));
  const drained=()=>{if(finishing)send({type:'finish-locked',workspace,timerId:timer.id,revision:timer.revision});else if(pending)send({type:'timer-command',workspace,command:pending});else send({type:'pending-drained',workspace});};
  port1.on('message',raw=>{
@@ -35,10 +35,13 @@ try {
   if(m.type==='web-ready')send({type:'native-ready',package:'com.pablormlopez.miministerio.testing',visible:false});
   else if(m.type==='arm-activation')send({type:'activation-armed',token:m.token});
   else if(m.type==='request-pending'){workspace=m.workspace;drained();}
-  else if(m.type==='timer-snapshot'){workspace=m.workspace;timer=m.timer;send({type:'sync-ready',workspace});}
+  else if(m.type==='timer-snapshot'){workspace=m.workspace;timer=m.timer;lastSnapshotId=m.requestId;send({type:'sync-ready',workspace,requestId:m.requestId});}
   else if(m.type==='web-command'){
    const c=m.command;if(c.action==='start'){assert.equal(timer,null);timer={id:c.timerId,revision:0,start:c.at,elapsed:0,running:true};}
    else {assert.equal(timer.id,c.timerId);assert.equal(timer.revision,c.expectedRevision);if(c.action==='pause')timer.elapsed+=c.at-timer.start;timer.start=c.at;timer.revision++;timer.running=c.action==='resume';}
+   // Simulate a delayed ready message from the preceding snapshot arriving
+   // before the pause command has been reconciled into encrypted web state.
+   if(process.env.FLOATING_RACE_SYNC==='1'&&c.action==='pause')send({type:'sync-ready',workspace,requestId:lastSnapshotId});
    pending=c;drained();
   }else if(m.type==='timer-ack'){if(pending?.id===m.commandId){pending=null;drained();}}
   else if(m.type==='begin-finish'){assert.ok(timer&&!timer.running&&!pending);finishing=true;send({type:'finish-result',workspace,requestId:m.requestId,result:'applied'});}

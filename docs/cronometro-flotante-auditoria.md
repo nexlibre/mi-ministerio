@@ -105,6 +105,12 @@ las carreras con restauración ni sincronización remota.
 Se corrigió la recepción del puerto de Chrome: el evento `window.message`
 transfiere el puerto y el saludo llega después a ese puerto. Las pruebas con
 MessageChannel real verifican ese orden, pero no sustituyen Chrome en Android.
+Las instantáneas y sus respuestas `sync-ready` se correlacionan con un ID; un
+mensaje retrasado no puede liberar los controles ni iniciar una finalización
+antes de que se haya guardado la pausa correspondiente. La prueba de la app
+simula expresamente esa carrera. Los tokens de permiso se renuevan al volver a
+primer plano y periódicamente para que no caduquen mientras la pantalla está
+abierta. Estas medidas aún requieren validación real de Chrome y Android.
 
 Antes de distribuir, validar la serialización de cambios de la bóveda con los
 comandos del puente y la recuperación tras perder un ACK, especialmente en

@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/core.mjs && node tests/device-access.mjs && node tests/timer-sync.mjs && node tests/floating-bridge.mjs && node tests/floating-reconcile.mjs && node tests/floating-snapshot.mjs && node tests/floating-finish.mjs && node tests/floating-settings.mjs && node tests/floating-app-integration.mjs && FLOATING_PASSWORD_MODE=1 node tests/floating-app-integration.mjs && bash tests/sign-script.sh"
+    "test": "node tests/core.mjs && node tests/device-access.mjs && node tests/timer-sync.mjs && node tests/floating-bridge.mjs && node tests/floating-reconcile.mjs && node tests/floating-snapshot.mjs && node tests/floating-finish.mjs && node tests/floating-settings.mjs && FLOATING_RACE_SYNC=1 node tests/floating-app-integration.mjs && FLOATING_PASSWORD_MODE=1 node tests/floating-app-integration.mjs && bash tests/sign-script.sh"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
