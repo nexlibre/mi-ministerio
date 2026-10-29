@@ -90,7 +90,9 @@ final class FloatingCoordinator {
                 String existing=journal.snapshot().workspace;
                 if(existing==null)sendStatus("pending-drained",requested);
                 else if(existing.equals(requested)) {
-                    if(journal.snapshot().pending.isEmpty())sendStatus("pending-drained");else sendPending();
+                    TimerJournal.State state=journal.snapshot();
+                    if(state.finishing && state.timer!=null)sendFinishLocked(state);
+                    else if(state.pending.isEmpty())sendStatus("pending-drained");else sendPending();
                 } else sendStatus("sync-conflict",requested);
             } else if("timer-ack".equals(type)) {
                 String workspace=input.optString("workspace","");String id=input.optString("commandId","");
@@ -155,6 +157,12 @@ final class FloatingCoordinator {
                     .put("action",c.action==TimerJournal.Action.START?"start":c.action==TimerJournal.Action.PAUSE?"pause":"resume");
             sender.send(new JSONObject().put("type","timer-command").put("workspace",state.workspace).put("command",command).toString());
         } catch(JSONException ignored) { }
+    }
+    private void sendFinishLocked(TimerJournal.State state) {
+        if(sender==null || state.timer==null)return;
+        try { sender.send(new JSONObject().put("type","finish-locked").put("workspace",state.workspace)
+                .put("timerId",state.timer.id).put("revision",state.timer.revision).toString()); }
+        catch(JSONException ignored) { }
     }
     private void sendStatus(String type) { sendStatus(type,journal.snapshot().workspace); }
     private void sendStatus(String type,String workspace) {
