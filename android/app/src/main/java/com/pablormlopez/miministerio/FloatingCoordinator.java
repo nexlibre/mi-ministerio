@@ -125,10 +125,10 @@ final class FloatingCoordinator {
                 context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).edit().putInt("style",style).putInt("alpha",alpha)
                         .putFloat("scale",scale).putInt("activeColor",active).putInt("pausedColor",paused).apply();
                 if(observer!=null)main.post(observer::onAppearanceChanged);
-            } else if("timer-clear".equals(type)) {
-                TimerJournal.Result result=journal.clear(input.optString("workspace",""),input.optString("timerId",""),input.getLong("revision"));
-                if(result==TimerJournal.Result.APPLIED){notifyObserver();sendStatus("sync-ready");}
-                else sendStatus("sync-conflict");
+            // Do not expose a direct timer-clear message: discard must first
+            // freeze a paused timer and persist an encrypted terminal receipt,
+            // then acknowledge via end-finish. Clearing native first would lose
+            // the authoritative timer if the web write fails.
             } else if("begin-finish".equals(type) || "end-finish".equals(type)) {
                 String workspace=input.getString("workspace"),timerId=input.getString("timerId"),requestId=input.getString("requestId");
                 if(requestId.isEmpty()||requestId.length()>128)return;
