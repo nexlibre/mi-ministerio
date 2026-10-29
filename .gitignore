@@ -3,3 +3,6 @@ dist/
 .env*
 *.tsbuildinfo
 .DS_Store
+
+# Local signing material: never commit
+/private-signing/
