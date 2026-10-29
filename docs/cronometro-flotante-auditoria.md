@@ -1,9 +1,9 @@
 # Cronómetro flotante 1.1.0 — auditoría y trabajo pendiente
 
 **Estado: no implementado. No desplegar ni distribuir como 1.1.0.** Esta rama
-conserva la aplicación existente y solo incorpora una protección parcial para el
-guardado del cronómetro web y componentes preparatorios; la ventana nativa
-no está conectada ni accesible desde la aplicación.
+conserva la aplicación existente y añade componentes experimentales para la
+ventana y el canal TWA. Todavía no existe una opción accesible en la interfaz
+ni un flujo completo de activación y finalización.
 
 ## Base comprobada
 
@@ -32,32 +32,27 @@ no está conectada ni accesible desde la aplicación.
   esas transiciones. El historial queda dentro del estado cifrado y está limitado
   a 128 comandos: un reintento más antiguo se trata como conflicto, no se aplica.
   El resultado de la función no es una confirmación de persistencia.
-- `floating-reconcile.ts` añade una comprobación de persistencia y rechaza
-  reemplazos concurrentes; se probó con IndexedDB y datos cifrados ficticios.
-  Aún no está conectado al canal ni a la interfaz: falta serializar el resto
-  de operaciones y vincular una identidad de espacio con las restauraciones.
-  `change()` ahora devuelve si la escritura cifrada local se completó; ese
-  resultado aún no se usa para confirmar mensajes nativos ni soluciona por sí
-  solo los conflictos entre procesos.
-- `floating-bridge.ts` es un transporte web aislado y probado con puertos
-  simulados, pero no se instancia en la aplicación ni existe todavía el extremo
-  Android. La prueba simulada no demuestra una conexión real con Chrome.
-- `FloatingTwaLauncher` es una implementación experimental de una sesión
-  compartida para la TWA y postMessage. No sustituye al launcher existente ni
-  está activada. Requiere revisar navegación, reconexión, política de segundo
-  plano y Digital Asset Links en un navegador y dispositivo reales.
-- `FloatingService` contiene una ventana compacta no exportada y todavía no
-  accesible; no controla ningún cronómetro. El arrastre y los límites son código
-  preliminar que requiere pruebas en teléfonos y distintas versiones Android.
-  No se solicita ningún permiso ni se arranca el servicio desde la interfaz.
+- `floating-reconcile.ts` comprueba persistencia y rechaza reemplazos concurrentes;
+  se probó con IndexedDB y datos cifrados ficticios. La página registra el
+  transporte y puede procesar comandos para un espacio identificado, pero la
+  interfaz no crea todavía esa identidad ni controla el flujo completo. Falta
+  serializar otras operaciones y tratar restauración y cambio de espacio.
+- `floating-finish.ts` y el bloqueo nativo de finalización son componentes
+  probados aisladamente; no están conectados al formulario de Actividad.
+- `FloatingTwaLauncher` usa la misma sesión para TWA y postMessage. Es código
+  experimental: requiere verificar la asociación digital publicada y probar
+  navegación y reconexión en un navegador y dispositivo reales.
+- `FloatingService` está conectado al diario nativo y tiene una ventana
+  compacta, pero no se puede activar desde la interfaz. El flujo nativo para
+  permisos existe y exige un token de activación; no se solicitan permisos en
+  el lanzamiento normal. Falta la opción y sus ajustes en Actividad.
   `OverlayPositionTest` comprueba límites y coordenadas relativas, no los
   gestos reales ni los insets de dispositivos Android.
-  El diario nativo `TimerJournal` y su almacén atómico en el directorio sin
-  copias de seguridad se desarrollan por separado y todavía no están
-  conectados al servicio ni a la web. Contienen identificadores opacos,
-  marcas temporales y estado del cronómetro sin cifrar, no datos del perfil
-  ni la clave. Falta establecer la identidad del espacio y el protocolo de
-  confirmación durable con el almacén cifrado, incluso tras restauración.
+- `TimerJournal` usa almacenamiento atómico fuera de las copias Android.
+  Contiene identificadores opacos, marcas temporales y estado del cronómetro
+  sin cifrar, no datos del perfil ni la clave. Los componentes de recuperación
+  y confirmación durable aún necesitan integración y validación de extremo a
+  extremo, especialmente después de restaurar una copia.
 
 ## Diseño pendiente antes de implementar
 
