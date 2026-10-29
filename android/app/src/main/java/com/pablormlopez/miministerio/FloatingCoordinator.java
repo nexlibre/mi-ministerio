@@ -92,6 +92,20 @@ final class FloatingCoordinator {
                 TimerJournal.Result result=journal.clear(input.optString("workspace",""),input.optString("timerId",""),input.getLong("revision"));
                 if(result==TimerJournal.Result.APPLIED){notifyObserver();sendStatus("sync-ready");}
                 else sendStatus("sync-conflict");
+            } else if("begin-finish".equals(type) || "end-finish".equals(type)) {
+                String workspace=input.getString("workspace"),timerId=input.getString("timerId"),requestId=input.getString("requestId");
+                if(requestId.isEmpty()||requestId.length()>128)return;
+                long revision=input.getLong("revision");
+                TimerJournal.Result result;
+                if("begin-finish".equals(type))result=journal.beginFinish(workspace,timerId,revision);
+                else {
+                    if(!input.has("committed"))return;
+                    result=journal.endFinish(workspace,timerId,revision,input.getBoolean("committed"));
+                }
+                if(result==TimerJournal.Result.APPLIED || result==TimerJournal.Result.DUPLICATE)notifyObserver();
+                if(sender!=null)sender.send(new JSONObject().put("type","finish-result").put("requestId",requestId)
+                        .put("workspace",workspace).put("timerId",timerId).put("revision",revision)
+                        .put("result",result.name().toLowerCase(java.util.Locale.ROOT)).toString());
             } else if("web-command".equals(type)) {
                 if(journal.snapshot().workspace==null || !journal.snapshot().workspace.equals(input.optString("workspace")))return;
                 JSONObject raw=input.getJSONObject("command");
