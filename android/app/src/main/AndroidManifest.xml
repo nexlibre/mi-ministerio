@@ -159,6 +159,16 @@
             
         </activity>
 
+        <!-- Entry is guarded by a one-shot token received over the validated TWA channel. -->
+        <activity android:name=".FloatingPermissionActivity" android:exported="true" android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="miministerio" android:host="floating-enable" />
+            </intent-filter>
+        </activity>
+
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
 
         <activity android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"

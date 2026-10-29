@@ -93,7 +93,7 @@ final class FloatingTwaLauncher extends TwaLauncher {
             @Override public void onCustomTabsServiceConnected(@NonNull ComponentName name, @NonNull CustomTabsClient client) {
                 if (destroyed) return;
                 client.warmup(0);
-                session = client.newSession(callback);
+                session = client.newSession(callback, com.google.androidbrowserhelper.trusted.SessionStore.makeSessionId(activity.getTaskId()));
                 if (session == null) { fallback.launch(activity, builder, provider.provider, complete); return; }
                 session.validateRelationship(CustomTabsService.RELATION_USE_AS_ORIGIN, ORIGIN, null);
                 Runnable open = () -> {

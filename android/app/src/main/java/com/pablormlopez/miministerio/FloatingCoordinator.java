@@ -18,6 +18,9 @@ final class FloatingCoordinator {
     private static FloatingCoordinator instance;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final TimerJournal journal;
+    private final Context context;
+    private String activationToken;
+    private long activationExpires;
     private Sender sender;
     private Observer observer;
     private boolean damaged;
@@ -27,6 +30,7 @@ final class FloatingCoordinator {
         return instance;
     }
     private FloatingCoordinator(Context context) {
+        this.context=context;
         TimerJournalStore store=new TimerJournalStore(context);
         TimerJournal.State state;
         try { state=store.load(); }
@@ -40,7 +44,16 @@ final class FloatingCoordinator {
     }
     void setObserver(Observer value) { observer=value; notifyObserver(); }
     void removeObserver(Observer value) { if(observer==value)observer=null; }
-    void setSender(Sender value) { sender=value; }
+    void setSender(Sender value) { sender=value; if(value==null)activationToken=null; }
+    boolean consumeActivation(String token) {
+        boolean valid=token!=null && token.equals(activationToken) && android.os.SystemClock.elapsedRealtime()<activationExpires;
+        activationToken=null;return valid;
+    }
+    void activationResult(boolean enabled) {
+        if(sender==null)return;
+        try {sender.send(new JSONObject().put("type",enabled?"overlay-enabled":"overlay-denied").toString());}
+        catch(JSONException ignored) { }
+    }
     TimerJournal.State snapshot() { return journal.snapshot(); }
     boolean available() { return !damaged && journal.snapshot().workspace!=null; }
     private void notifyObserver() { if(observer!=null)main.post(observer::onTimerChanged); }
@@ -62,7 +75,16 @@ final class FloatingCoordinator {
         try {
             JSONObject input=new JSONObject(message);
             String type=input.optString("type","");
-            if("request-pending".equals(type)) {
+            if("web-ready".equals(type)) {
+                if(sender!=null)sender.send(new JSONObject().put("type","native-ready")
+                    .put("package",context.getPackageName())
+                    .put("enabled",context.getSharedPreferences("floating-display",Context.MODE_PRIVATE).getBoolean("enabled",false)).toString());
+            } else if("arm-activation".equals(type)) {
+                String token=input.optString("token","");
+                if(!token.matches("[a-zA-Z0-9-]{16,128}"))return;
+                activationToken=token;activationExpires=android.os.SystemClock.elapsedRealtime()+120000;
+                if(sender!=null)sender.send(new JSONObject().put("type","activation-armed").put("token",token).toString());
+            } else if("request-pending".equals(type)) {
                 String requested=input.optString("workspace","");
                 if(requested.isEmpty() || requested.length()>128)return;
                 String existing=journal.snapshot().workspace;

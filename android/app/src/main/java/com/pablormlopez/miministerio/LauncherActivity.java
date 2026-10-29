@@ -44,10 +44,8 @@ public class LauncherActivity
 
     @Override
     protected com.google.androidbrowserhelper.trusted.TwaLauncher createTwaLauncher() {
-        // The existing launcher remains unchanged until the user explicitly
-        // enables the floating feature. The experimental channel is opt-in.
-        if (!getSharedPreferences("floating-display", MODE_PRIVATE).getBoolean("enabled", false))
-            return super.createTwaLauncher();
+        // A channel is established without requesting permissions or starting
+        // the overlay. It is used only if the user explicitly enables the feature.
         FloatingCoordinator coordinator = FloatingCoordinator.get(this);
         final FloatingTwaLauncher[] launcher = new FloatingTwaLauncher[1];
         launcher[0] = new FloatingTwaLauncher(this, new FloatingTwaLauncher.Listener() {
