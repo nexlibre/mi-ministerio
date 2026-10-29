@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/core.mjs && node tests/device-access.mjs && node tests/timer-sync.mjs && node tests/floating-bridge.mjs"
+    "test": "node tests/core.mjs && node tests/device-access.mjs && node tests/timer-sync.mjs && node tests/floating-bridge.mjs && node tests/floating-reconcile.mjs"
   },
   "dependencies": {
     "react": "19.2.6",

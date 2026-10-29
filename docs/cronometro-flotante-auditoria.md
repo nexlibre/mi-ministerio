@@ -32,6 +32,10 @@ no está conectada ni accesible desde la aplicación.
   esas transiciones. El historial queda dentro del estado cifrado y está limitado
   a 128 comandos: un reintento más antiguo se trata como conflicto, no se aplica.
   El resultado de la función no es una confirmación de persistencia.
+- `floating-reconcile.ts` añade una comprobación de persistencia y rechaza
+  reemplazos concurrentes; se probó con IndexedDB y datos cifrados ficticios.
+  Aún no está conectado al canal ni a la interfaz: falta serializar el resto
+  de operaciones y vincular una identidad de espacio con las restauraciones.
   `change()` ahora devuelve si la escritura cifrada local se completó; ese
   resultado aún no se usa para confirmar mensajes nativos ni soluciona por sí
   solo los conflictos entre procesos.
@@ -98,9 +102,10 @@ verificar realmente el certificado de la APK y el archivo servido. El archivo
 `android/assetlinks.json` del repositorio no prueba el estado del sitio publicado.
 
 La firma original no está disponible. Una clave diferente no actualiza la app
-original del mismo paquete. La firma autorizada para el paquete `.testing` solo
-sirve para esa variante; no presupone acceso a los datos del navegador original.
-No generar claves, desinstalar ni distribuir una actualización incompatible.
+original del mismo paquete. Se creó una clave local nueva para el paquete
+`.testing` y se verificó la firma de una APK de prueba sin la función completa.
+No presupone acceso a los datos del navegador original, no es una entrega final
+y no debe presentarse como actualización. No desinstalar la aplicación original.
 
 Pendiente en teléfono físico: activar y denegar/conceder el permiso; salir a otra
 app; arrastrar a bordes, rotar y recuperar posición; pausar/reanudar en ambas
