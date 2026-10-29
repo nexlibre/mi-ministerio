@@ -12,7 +12,7 @@ import java.util.Set;
 
 /** Strict binary codec. Contains only an opaque workspace id, timer and commands. */
 final class TimerJournalCodec {
-    private static final int MAGIC=0x4d4d544a, VERSION=1, MAX_BYTES=65536, MAX_PENDING=128;
+    private static final int MAGIC=0x4d4d544a, VERSION=2, MAX_BYTES=65536, MAX_PENDING=128;
     private static void id(String value) throws IOException {
         if (value == null || value.isEmpty() || value.length()>128) throw new IOException("Invalid journal identifier");
     }
@@ -27,6 +27,8 @@ final class TimerJournalCodec {
             out.writeUTF(state.timer.id);out.writeLong(state.timer.revision);out.writeLong(state.timer.start);
             out.writeLong(state.timer.elapsed);out.writeBoolean(state.timer.running);
         }
+        out.writeBoolean(state.finishing);
+        out.writeBoolean(state.lastFinishedId!=null);if(state.lastFinishedId!=null)out.writeUTF(state.lastFinishedId);
         out.writeInt(state.pending.size());
         for(TimerJournal.Command c:state.pending) {
             out.writeUTF(c.id);out.writeUTF(c.timerId);out.writeLong(c.expectedRevision);
@@ -39,10 +41,13 @@ final class TimerJournalCodec {
     static TimerJournal.State decode(byte[] bytes) throws IOException {
         if(bytes.length>MAX_BYTES)throw new IOException("Journal too large");
         DataInputStream in=new DataInputStream(new ByteArrayInputStream(bytes));
-        if(in.readInt()!=MAGIC || in.readInt()!=VERSION)throw new IOException("Invalid journal version");
+        if(in.readInt()!=MAGIC)throw new IOException("Invalid journal magic");
+        int version=in.readInt();if(version<1 || version>VERSION)throw new IOException("Invalid journal version");
         String workspace=in.readBoolean()?in.readUTF():null;
         TimerJournal.Timer timer=null;
         if(in.readBoolean())timer=new TimerJournal.Timer(in.readUTF(),in.readLong(),in.readLong(),in.readLong(),in.readBoolean());
+        boolean finishing=version>=2 && in.readBoolean();
+        String lastFinishedId=version>=2 && in.readBoolean()?in.readUTF():null;
         int count=in.readInt();if(count<0 || count>MAX_PENDING)throw new IOException("Invalid journal length");
         List<TimerJournal.Command> pending=new ArrayList<>();
         for(int i=0;i<count;i++) {
@@ -51,12 +56,14 @@ final class TimerJournalCodec {
             pending.add(new TimerJournal.Command(commandId,timerId,revision,at,action==0?TimerJournal.Action.PAUSE:action==1?TimerJournal.Action.RESUME:TimerJournal.Action.START));
         }
         if(in.read()!=-1)throw new IOException("Trailing journal data");
-        TimerJournal.State state=new TimerJournal.State(workspace,timer,pending);validate(state);return state;
+        TimerJournal.State state=new TimerJournal.State(workspace,timer,pending,finishing,lastFinishedId);validate(state);return state;
     }
     private static void validate(TimerJournal.State state) throws IOException {
         if(state==null || state.pending.size()>MAX_PENDING)throw new IOException("Invalid journal");
         if(state.workspace!=null)id(state.workspace);
-        if(state.timer!=null) { if(state.workspace==null || !state.timer.valid())throw new IOException("Invalid timer");id(state.timer.id); }
+        if(state.lastFinishedId!=null)id(state.lastFinishedId);
+        if(state.finishing && (state.timer==null || state.timer.running || !state.pending.isEmpty()))throw new IOException("Invalid finish lock");
+        if(state.timer!=null) { if(state.workspace==null || !state.timer.valid() || state.timer.id.equals(state.lastFinishedId))throw new IOException("Invalid timer");id(state.timer.id); }
         if(!state.pending.isEmpty() && state.timer==null)throw new IOException("Commands without timer");
         Set<String> ids=new HashSet<>();long revision=-2,at=-1;TimerJournal.Action previous=null;
         for(TimerJournal.Command c:state.pending) {

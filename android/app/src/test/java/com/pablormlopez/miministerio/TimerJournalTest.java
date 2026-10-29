@@ -28,6 +28,26 @@ public class TimerJournalTest {
         assertEquals(3500,restored.snapshot().timer.elapsed);
         assertEquals(TimerJournal.Result.CONFLICT,restored.transition(start));
     }
+    @Test public void finishLockSurvivesRestartAndFinalizationIsIdempotent() throws Exception {
+        Store store=new Store();TimerJournal j=new TimerJournal(store,empty());j.install("workspace",running());
+        j.transition(pause());
+        assertEquals(TimerJournal.Result.CONFLICT,j.beginFinish("workspace","timer",1));
+        j.acknowledge("workspace","one",1);
+        assertEquals(TimerJournal.Result.CONFLICT,j.beginFinish("workspace","timer",0));
+        assertEquals(TimerJournal.Result.APPLIED,j.beginFinish("workspace","timer",1));
+        assertEquals(TimerJournal.Result.DUPLICATE,j.beginFinish("workspace","timer",1));
+        TimerJournal restored=new TimerJournal(store,TimerJournalCodec.decode(TimerJournalCodec.encode(j.snapshot())));
+        assertTrue(restored.snapshot().finishing);
+        TimerJournal.Command resume=new TimerJournal.Command("resume","timer",1,7000,TimerJournal.Action.RESUME);
+        assertEquals(TimerJournal.Result.CONFLICT,restored.transition(resume));
+        assertEquals(TimerJournal.Result.CONFLICT,restored.install("workspace",null));
+        assertEquals(TimerJournal.Result.APPLIED,restored.endFinish("workspace","timer",1,false));
+        assertEquals(TimerJournal.Result.APPLIED,restored.beginFinish("workspace","timer",1));
+        assertEquals(TimerJournal.Result.APPLIED,restored.endFinish("workspace","timer",1,true));
+        TimerJournal completed=new TimerJournal(store,TimerJournalCodec.decode(TimerJournalCodec.encode(restored.snapshot())));
+        assertEquals(TimerJournal.Result.DUPLICATE,completed.endFinish("workspace","timer",1,true));
+        assertEquals(TimerJournal.Result.CONFLICT,completed.transition(new TimerJournal.Command("again","timer",-1,9000,TimerJournal.Action.START)));
+    }
     @Test public void writesBeforePublishingAndSurvivesRestore() {
         Store store=new Store();TimerJournal journal=new TimerJournal(store,empty());
         assertEquals(TimerJournal.Result.APPLIED,journal.install("workspace",running()));

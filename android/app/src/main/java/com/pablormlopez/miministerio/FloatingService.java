@@ -158,8 +158,8 @@ public final class FloatingService extends Service {
         long now=System.currentTimeMillis();
         elapsedMs=timer==null?0:timer.elapsed+(timer.running?Math.max(0,now-timer.start):0);
         observedAt=android.os.SystemClock.elapsedRealtime();
-        toggle.setEnabled(connected);
-        toggle.setAlpha(connected?1f:.45f);
+        toggle.setEnabled(connected && !state.finishing);
+        toggle.setAlpha(connected && !state.finishing?1f:.45f);
         toggle.setText(running?"Ⅱ":"▶");
         toggle.setContentDescription(running?"Pausar cronómetro":"Iniciar o reanudar cronómetro");
         int color=preferences.getInt(running?"activeColor":"pausedColor",running?0xffe8c56a:0xffc6d3d8);
